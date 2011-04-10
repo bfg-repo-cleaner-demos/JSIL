@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("HelloWorld")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("Tests")]
+[assembly: AssemblyDescription("JSIL Test Suite")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Squared Interactive")]
-[assembly: AssemblyProduct("HelloWorld")]
+[assembly: AssemblyProduct("JSIL")]
 [assembly: AssemblyCopyright("Copyright © Squared Interactive 2011")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("dd7dead1-d763-40af-8d12-93b76309f746")]
+[assembly: Guid("ca7c359b-0f27-40c7-ba51-7220a6c69e65")]
 
 // Version information for an assembly consists of the following four values:
 //
