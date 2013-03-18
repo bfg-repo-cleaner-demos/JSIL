@@ -1441,6 +1441,18 @@ JSIL.GetInFlightTypeObject = function (fullName, assembly) {
 
 $jsilcore.DeadPublicInterfaces = Object.create(null);
 
+JSIL.InFlightTypeRecord = function (fullName, typeObject) {
+  this.fullName = fullName;
+  this.typeObject = typeObject;
+  this.publicInterface = null;
+};
+
+JSIL.InFlightTypeRecord.prototype = Object.create(null);
+
+JSIL.InFlightTypeRecord.prototype.toString = function () {
+  return "Partially constructed type " + this.fullName;
+};
+
 JSIL.CreatorResult = function (assembly, fullName, constructPublicInterface) {
   this.assembly = assembly;
   this.fullName = fullName;
@@ -1463,20 +1475,23 @@ JSIL.CreatorResult = function (assembly, fullName, constructPublicInterface) {
   this.typeId = JSIL.AssignTypeId(assembly, fullName);
   JSIL.SetTypeId(this.typeObject, this.publicInterfaceProxy, this.typeId);
 
-  $jsilcore.InFlightObjectConstructions[fullName] = {
-    fullName: this.fullName,
-    typeObject: this.typeObject, 
-    publicInterface: null
-  };
+  this.recursivelyAccessed = false;
+
+  $jsilcore.InFlightObjectConstructions[fullName] = 
+    new JSIL.InFlightTypeRecord(this.fullName, this.typeObject);
 };
 
 JSIL.CreatorResult.prototype = Object.create(null);
 
 JSIL.CreatorResult.prototype.transplantMembersFromProxyToPublicInterface = function () {
+  if (!this.publicInterfaceProxy.__IsPartiallyConstructed__)
+    return;
+
   JSIL.TransplantMembers(this.publicInterface, this.publicInterfaceProxy);
 
   $jsilcore.DeadPublicInterfaces[this.fullName] = this.publicInterfaceProxy;
-  this.publicInterfaceProxy = null;
+
+  this.publicInterfaceProxy = this.publicInterface;
 };
 
 JSIL.CreatorResult.prototype.constructPublicInterface = function () {
@@ -1500,6 +1515,10 @@ JSIL.CreatorResult.prototype.constructPublicInterface = function () {
   var inFlight = $jsilcore.InFlightObjectConstructions[this.fullName];
   if (inFlight)
     inFlight.publicInterface = this.publicInterface;
+};
+
+JSIL.CreatorResult.prototype.toString = function () {
+  return "Type creator result for type " + this.fullName;
 };
 
 JSIL.TransplantMembers = function (dest, source) {
@@ -1606,7 +1625,9 @@ JSIL.RegisterName = function (name, privateNamespace, isPublic, creator, initial
       try {
         setThisType = ifn(state.creatorResult);
 
-        state.creatorResult.constructPublicInterface();
+        if (!state.creatorResult.publicInterface)
+          state.creatorResult.constructPublicInterface();
+
         state.publicInterface = state.creatorResult.publicInterface;
 
         if (typeof(setThisType) === "function")
@@ -4009,6 +4030,8 @@ JSIL.GetCorlib = function () {
 };
 
 $jsilcore.$GetRuntimeType = function (context, forTypeName) {
+  // FIXME: Man, I don't even remember how this function is supposed to work anymore.
+
   var inFlight = JSIL.GetInFlightPublicInterface("System.RuntimeType", $jsilcore);
   if (inFlight)
     return inFlight.prototype;
@@ -4019,13 +4042,13 @@ $jsilcore.$GetRuntimeType = function (context, forTypeName) {
     (forTypeName === "System.Type") ||
     (forTypeName === "System.Object")
   )
-    return $jsilcore.FakeRuntimeType.prototype;  
+    return $jsilcore.FakeRuntimeType;
 
   var rn = JSIL.ResolveName($jsilcore, "System.RuntimeType");
   if (JSIL.$RuntimeTypeInitialized && rn.exists())
     return rn.get().prototype;
 
-  return $jsilcore.FakeRuntimeType.prototype;
+  return $jsilcore.FakeRuntimeType;
 };
 
 JSIL.ApplyGenericMethodsToPublicInterface = function (typeObject, publicInterface) {
@@ -4451,6 +4474,20 @@ JSIL.MakeTypeConstructor = function (typeObject) {
   return result;
 };
 
+JSIL.TypeRefRecursivelyReferencesType = function (typeRef, type) {
+  if (typeRef.typeName === type.__FullName__) {
+    return true;
+  } else if (typeRef.genericArguments) {
+    for (var i = 0, l = typeRef.genericArguments.length; i < l; i++) {
+      var ga = typeRef.genericArguments[i];
+      if (JSIL.TypeRefRecursivelyReferencesType(ga, type))
+        return true;
+    }
+  }
+
+  return false;
+};
+
 JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, genericArguments, initializer) {
   if (typeof (isPublic) === "undefined")
     JSIL.Host.abort(new Error("Must specify isPublic"));
@@ -4465,9 +4502,10 @@ JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, generic
 
   var typeObject, staticClassObject;
   var isGeneric = genericArguments && genericArguments.length;
+  var enableOptimizedConstructor = true;
 
   var makeConstructor = function () {
-    var result = JSIL.MakeTypeConstructor(typeObject);
+    var result = JSIL.MakeTypeConstructor(typeObject, enableOptimizedConstructor);
 
     if (isGeneric)
       JSIL.ApplyGenericMethodsToPublicInterface(typeObject, result);
@@ -4483,6 +4521,12 @@ JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, generic
     typeObject.__ShortName__ = localName;
     // Without this, the generated constructor won't behave correctly for 0-argument construction
     typeObject.__IsStruct__ = !isReferenceType;
+
+    if (JSIL.TypeRefRecursivelyReferencesType(baseType, typeObject)) {
+      JSIL.Host.warning("Recursive self-reference detected in type '" + fullName + "'. Optimized constructor disabled.");
+      enableOptimizedConstructor = false;
+      creatorResult.constructPublicInterface();
+    }
 
     typeObject.__BaseType__ = JSIL.ResolveTypeReference(baseType, assembly, true)[1];
     var baseTypeName = typeObject.__BaseType__.__FullName__ || baseType.toString();
@@ -5450,7 +5494,7 @@ JSIL.InterfaceBuilder.prototype.ExternalMethod = function (_descriptor, methodNa
     newValue = impl[prefix + mangledName][1];
 
     isPlaceholder = false;
-  } else if (!descriptor.Target.hasOwnProperty(mangledName)) {
+  } else if (!Object.hasOwnProperty.call(descriptor.Target, mangledName)) {
     var externalMethods = this.typeObject.__ExternalMethods__;
     var externalMethodIndex = externalMethods.length;
 

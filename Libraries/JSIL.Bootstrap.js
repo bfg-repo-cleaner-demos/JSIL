@@ -2099,7 +2099,7 @@ JSIL.ImplementExternals("System.Collections.Generic.Dictionary`2", function ($) 
           var keys = [];
 
           for (var k in this._dict) {
-            if (!this._dict.hasOwnProperty(k))
+            if (!Object.hasOwnProperty.call(this._dict, k))
               continue;
             var bucket = this._dict[k];
 
@@ -2129,7 +2129,7 @@ JSIL.ImplementExternals("System.Collections.Generic.Dictionary`2", function ($) 
           var values = [];
 
           for (var k in this._dict) {
-            if (!this._dict.hasOwnProperty(k))
+            if (!Object.hasOwnProperty.call(this._dict, k))
               continue;
             var bucket = this._dict[k];
 
