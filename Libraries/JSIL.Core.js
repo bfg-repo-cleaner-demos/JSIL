@@ -42,18 +42,18 @@ JSIL.ExternalsQueue = {};
 JSIL.$RuntimeTypeInitialized = false;
 
 JSIL.HasOwnPropertyRecursive = function (target, name) {
-  while (!target.hasOwnProperty(name)) {
+  while (!Object.hasOwnProperty.call(target, name)) {
     target = Object.getPrototypeOf(target);
 
     if ((typeof (target) === "undefined") || (target === null))
       return false;
   }
 
-  return target.hasOwnProperty(name);
+  return Object.hasOwnProperty.call(target, name);
 };
 
 JSIL.GetOwnPropertyDescriptorRecursive = function (target, name) {
-  while (!target.hasOwnProperty(name)) {
+  while (!Object.hasOwnProperty.call(target, name)) {
     target = Object.getPrototypeOf(target);
 
     if ((typeof (target) === "undefined") || (target === null))
@@ -252,7 +252,7 @@ JSIL.GetAssembly = function (assemblyName, requireExisting) {
   var isJsilMeta = (shortName === "JSIL.Meta") || (assemblyName.indexOf("JSIL.Meta,") === 0);
 
   // Create a new private global namespace for the new assembly
-  var template = {};
+  var template = Object.create(null);
 
   // Ensure that BCL private namespaces inherit from the JSIL namespace.
   if (isMscorlib || isSystem || isSystemCore || isSystemXml || isJsilMeta)
@@ -289,7 +289,7 @@ JSIL.GetAssembly = function (assemblyName, requireExisting) {
     }
   );
 
-  JSIL.SetValueProperty(result, "$typesByName", {}, false);
+  JSIL.SetValueProperty(result, "$typesByName", Object.create(null), false);
 
   JSIL.PrivateNamespaces[assemblyName] = result;
   return result;
@@ -784,7 +784,7 @@ JSIL.ResolvedName.prototype.exists = function (allowInheritance) {
   if (this.allowInheritance && (allowInheritance !== false))
     return (this.key in this.parent);
   else
-    return this.parent.hasOwnProperty(this.key);
+    return Object.hasOwnProperty.call(this.parent, this.key);
 };
 JSIL.ResolvedName.prototype.get = function () {
   return this.parent[this.key];
@@ -843,7 +843,7 @@ JSIL.ResolveName = function (root, name, allowInheritance, throwOnFail) {
     }
 
     if (!allowInheritance) {
-      if (!current.hasOwnProperty(key)) {
+      if (!Object.hasOwnProperty.call(current, key)) {
         if (throwOnFail !== false)
           throw makeError(key, current);
         else
@@ -1192,25 +1192,21 @@ JSIL.QueueTypeInitializer = function (type, initializer) {
 };
 
 JSIL.Initialize = function () {
-  // Force initialize System.Object before sealing initialized names. This prevents a cycle
-  //  in the reflection machinery.
-  var typesToForceInitialize = [
-    $jsilcore.System.Object,
-    $jsilcore.System.Reflection.MemberInfo,
-    $jsilcore.System.Reflection.FieldInfo,
-    $jsilcore.System.Reflection.MethodInfo,
-    $jsilcore.System.Reflection.PropertyInfo
-  ];
-
-  for (var i = 0, l = typesToForceInitialize.length; i < l; i++) {
-    JSIL.InitializeType(typesToForceInitialize[i]);
-  }
-
   // Seal all registered names so that their static constructors run on use
   var arn = JSIL.AllRegisteredNames;
   for (var i = 0, l = arn.length; i < l; i++) {
     arn[i].sealed = true;
   }
+
+  var systemObject = $jsilcore.System.Object;
+  var methodInfo = $jsilcore.System.Reflection.MethodInfo;
+
+  while ($jsilcore.DeferredInitializeQueue.length > 0) {
+    var deferredInitializer = $jsilcore.DeferredInitializeQueue.shift();
+    deferredInitializer();
+  }
+
+  $jsilcore.DeferredInitializeQueue = null;
 };
 
 JSIL.GenericParameter = function (name, context) {
@@ -1440,6 +1436,7 @@ JSIL.GetInFlightTypeObject = function (fullName, assembly) {
 $jsilcore.DeadPublicInterfaces = Object.create(null);
 
 JSIL.CreatorResult = function (assembly, fullName, constructPublicInterface) {
+  this.assembly = assembly;
   this.fullName = fullName;
 
   var runtimeType = $jsilcore.$GetRuntimeType(assembly, fullName);
@@ -1514,8 +1511,11 @@ JSIL.CreatorResult.prototype.constructPublicInterface = function () {
   this.transplantMembersFromProxyToPublicInterface();
 
   JSIL.SetValueProperty(this.publicInterface, "__TypeId__", this.typeId);
-  if (this.publicInterface.prototype)
+
+  if (this.publicInterface.prototype) {
     JSIL.SetValueProperty(this.publicInterface.prototype, "__TypeId__", this.typeId);
+    JSIL.SetValueProperty(this.publicInterface.prototype, "__ThisType__", this.typeObject);
+  }
 
   var inFlight = $jsilcore.InFlightObjectConstructions[this.fullName];
   if (inFlight)
@@ -1547,87 +1547,84 @@ JSIL.RegisterName = function (name, privateNamespace, isPublic, creator, initial
   };
   JSIL.AllRegisteredNames.push(state);
 
-  var getter = function (unseal) {
-    try {
-      if (state.constructing) {
+  var getter = function LazyInitializeRegisteredName (unseal) {
+    if (state.constructing) {
+      if (
+        ($jsilcore.SuppressRecursiveConstructionErrors > 0) && 
+        state.publicInterface && 
+        !state.publicInterface.__IsPartiallyConstructed__
+      ) {
+        JSIL.Host.warning("Ignoring recursive construction of type '" + name + "'.");
+        return state.publicInterface;
+      } else {
+        var err = new Error("Recursive construction of type '" + name + "' detected.");
+        state.publicInterface = err;
+        throw err;
+      }
+    }
+
+    if (typeof (state.creator) === "function") {
+      state.constructing = true;
+      var cf = state.creator;
+
+      try {
+        state.creatorResult = cf();
+
         if (
-          ($jsilcore.SuppressRecursiveConstructionErrors > 0) && 
-          state.publicInterface && 
-          !state.publicInterface.__IsPartiallyConstructed__
+          !state.creatorResult ||
+          (Object.getPrototypeOf(state.creatorResult) !== JSIL.CreatorResult.prototype)
         ) {
-          JSIL.Host.warning("Ignoring recursive construction of type '" + name + "'.");
-          return state.publicInterface;
-        } else {
-          var err = new Error("Recursive construction of type '" + name + "' detected.");
+          var err = new Error("Invalid result from type creator for type '" + name + "'");
+          state.creatorResult = null;
           state.publicInterface = err;
           throw err;
         }
+      } catch (exc) {
+        JSIL.Host.abort(exc);
+      } finally {
+        state.creator = null;
+        state.constructing = false;
       }
+    }
 
-      if (typeof (state.creator) === "function") {
-        state.constructing = true;
-        var cf = state.creator;
+    if (typeof (state.initializer) === "function") {
+      var ifn = state.initializer;
+      state.constructing = true;
 
-        try {
-          state.creatorResult = cf();
+      var setThisType = null;
 
-          if (
-            !state.creatorResult ||
-            (Object.getPrototypeOf(state.creatorResult) !== JSIL.CreatorResult.prototype)
-          ) {
-            var err = new Error("Invalid result from type creator for type '" + name + "'");
-            state.creatorResult = null;
-            state.publicInterface = err;
-            throw err;
-          }
-        } catch (exc) {
-          JSIL.Host.abort(exc);
-        } finally {
-          state.creator = null;
-          state.constructing = false;
-        }
-      }
+      try {
+        setThisType = ifn(state.creatorResult);
 
-      if (typeof (state.initializer) === "function") {
-        var ifn = state.initializer;
-        state.constructing = true;
-
-        var setThisType = null;
-
-        try {
-          setThisType = ifn(state.creatorResult);
-
-          state.creatorResult.constructPublicInterface();
-          state.publicInterface = state.creatorResult.publicInterface;
-
-          if (typeof(setThisType) === "function")
-            setThisType(state.publicInterface);
-        } catch (exc) {
-          JSIL.Host.abort(exc);
-        } finally {
-          state.initializer = null;
-          state.constructing = false;
-        }
-      } else {
         state.creatorResult.constructPublicInterface();
         state.publicInterface = state.creatorResult.publicInterface;
+
+        if (typeof(setThisType) === "function")
+          setThisType(state.publicInterface);
+      } catch (exc) {
+        JSIL.Host.abort(exc);
+      } finally {
+        state.initializer = null;
+        state.constructing = false;
       }
+    } else if (state.publicInterface === null) {
+      state.creatorResult.constructPublicInterface();
+      state.publicInterface = state.creatorResult.publicInterface;
+    }
 
-      if (typeof (unseal) !== "boolean") {
-        unseal = true;
-      }
+    if (typeof (unseal) !== "boolean") {
+      unseal = true;
+    }
 
-      if (state.sealed && unseal) {
-        state.sealed = false;
+    if (state.sealed && unseal) {
+      state.sealed = false;
 
-        JSIL.InitializeType(state.publicInterface);
+      JSIL.InitializeType(state.publicInterface);
 
-        privateName.define({ value: state.publicInterface });
+      privateName.define({ value: state.publicInterface });
 
-        if (isPublic)
-          publicName.define({ value: state.publicInterface });
-      }
-    } finally {
+      if (isPublic)
+        publicName.define({ value: state.publicInterface });
     }
 
     if (
@@ -1635,14 +1632,14 @@ JSIL.RegisterName = function (name, privateNamespace, isPublic, creator, initial
       !state.publicInterface.__IsPartiallyConstructed__
     ) {
       return state.publicInterface;
-    }else
+    } else
       throw new Error("state.publicInterface is invalid");
   };
 
   privateName.setLazy(getter);
 
   if (isPublic)
-    publicName.setLazy(getter);
+    publicName.setLazy(getter);  
 
   JSIL.DefineTypeName(name, getter, isPublic);
 };
@@ -2332,6 +2329,11 @@ JSIL.RebindRawMethods = function (publicInterface, typeObject) {
       var methodName = item.name;
       var method = publicInterface[methodName];
 
+      if (!method) {
+        JSIL.Host.warning("Method '" + methodName + "' not found in public interface of type '" + typeObject.__FullName__ + "'");
+        continue;
+      }
+
       var boundMethod = method.bind(publicInterface);
       JSIL.SetValueProperty(publicInterface, methodName, boundMethod);
     }
@@ -2545,14 +2547,14 @@ JSIL.FixupInterfaces = function (publicInterface, typeObject) {
 
     __members__:
     for (var key in members) {
-      if (!members.hasOwnProperty(key))
+      if (!Object.hasOwnProperty.call(members, key))
         continue __members__;
 
       var memberType = members[key];
       var qualifiedName = escapedLocalName + "_" + key;
 
-      var hasShort = proto.hasOwnProperty(key);
-      var hasQualified = proto.hasOwnProperty(qualifiedName);
+      var hasShort = Object.hasOwnProperty.call(proto, key);
+      var hasQualified = Object.hasOwnProperty.call(proto, qualifiedName);
 
       var hasShortRecursive = JSIL.HasOwnPropertyRecursive(proto, key);
       var hasQualifiedRecursive = JSIL.HasOwnPropertyRecursive(proto, qualifiedName);
@@ -2793,8 +2795,8 @@ JSIL.InitializeInstanceFields = function (instance, typeObject) {
 };
 
 JSIL.CopyObjectValues = function (source, target) {
-  for (var k in source) {
-    if (!source.hasOwnProperty(k))
+  for (var k in source) {    
+    if (!Object.hasOwnProperty.call(source, k))
       continue;
 
     target[k] = source[k];
@@ -3671,7 +3673,14 @@ JSIL.BuildTypeList = function (type, publicInterface) {
   }
 };
 
-$jsilcore.cctorKeys = ["_cctor", "_cctor2", "_cctor3", "_cctor4", "_cctor5"];
+$jsilcore.cctorKeys = [
+  "_cctor", "_cctor2", "_cctor3", "_cctor4", "_cctor5"
+];
+$jsilcore.TypesToDeferInitializationFor = [
+  "System.Reflection.MemberInfo", "System.Reflection.FieldInfo", 
+  "System.Reflection.MethodBase", "System.Reflection.MethodInfo", "System.Reflection.PropertyInfo"
+];
+$jsilcore.DeferredInitializeQueue = [];
 
 JSIL.InitializeType = function (type) {
   var classObject = type, typeObject = type;
@@ -3691,6 +3700,8 @@ JSIL.InitializeType = function (type) {
   // Not entirely correct, but prevents recursive type initialization
   typeObject.__TypeInitialized__ = true;
 
+  var deferred = false;
+
   if (typeObject.__IsClosed__) {
     var forceLazyMethodGroups = false;
 
@@ -3699,44 +3710,60 @@ JSIL.InitializeType = function (type) {
     if (typeObject.__FullName__.indexOf("System.") === 0)
       forceLazyMethodGroups = true;
 
-    if (typeObject.IsInterface !== true) {
-      JSIL.$CreateMethodMembranes(typeObject, classObject);
-      JSIL.$BuildMethodGroups(typeObject, classObject, forceLazyMethodGroups);
+    var doInitialization = function () {
+      if (typeObject.IsInterface !== true) {
+        JSIL.$CreateMethodMembranes(typeObject, classObject);
+        JSIL.$BuildMethodGroups(typeObject, classObject, forceLazyMethodGroups);
+      }
+
+      JSIL.InitializeFields(classObject, typeObject);
+      JSIL.InstantiateProperties(classObject, typeObject);
+
+      if (typeObject.IsInterface !== true) {
+        JSIL.FixupInterfaces(classObject, typeObject);
+        JSIL.RebindRawMethods(classObject, typeObject);
+      }
+
+      if (!typeObject.__IsStatic__) {
+        JSIL.BuildTypeList(typeObject, classObject);
+      }
+
+      if (
+        (typeof (classObject.prototype) === "object") && 
+        // HACK: We need to use a special implementation for System.Object.MemberwiseClone,
+        //  since when called explicitly it acts 'virtually' (conforms to the instance type)
+        //  (issue #146)
+        (typeObject.__FullName__ !== "System.Object")
+      ) {
+        JSIL.SetLazyValueProperty(
+          classObject.prototype, "MemberwiseClone", function () {
+            return JSIL.$MakeMemberwiseCloner(typeObject, classObject);
+          }
+        );
+      }
+
+      if (classObject.__PreInitMembrane__)
+        classObject.__PreInitMembrane__.maybeInit();
+      if (classObject.prototype && classObject.prototype.__PreInitMembrane__)
+        classObject.prototype.__PreInitMembrane__.maybeInit();
+
+      if (deferred)
+        delete $jsilcore.InFlightObjectConstructions[typeObject.__FullName__];
+    };
+
+    var shouldDefer = $jsilcore.TypesToDeferInitializationFor.indexOf(typeObject.__FullName__) >= 0;
+
+    if (shouldDefer && $jsilcore.DeferredInitializeQueue) {
+      $jsilcore.DeferredInitializeQueue.push(doInitialization);
+      deferred = true;
+    } else {
+      doInitialization();
+      deferred = false;
     }
-
-    JSIL.InitializeFields(classObject, typeObject);
-    JSIL.InstantiateProperties(classObject, typeObject);
-
-    if (typeObject.IsInterface !== true) {
-      JSIL.FixupInterfaces(classObject, typeObject);
-      JSIL.RebindRawMethods(classObject, typeObject);
-    }
-
-    if (!typeObject.__IsStatic__) {
-      JSIL.BuildTypeList(typeObject, classObject);
-    }
-
-    if (
-      (typeof (classObject.prototype) === "object") && 
-      // HACK: We need to use a special implementation for System.Object.MemberwiseClone,
-      //  since when called explicitly it acts 'virtually' (conforms to the instance type)
-      //  (issue #146)
-      (typeObject.__FullName__ !== "System.Object")
-    ) {
-      JSIL.SetLazyValueProperty(
-        classObject.prototype, "MemberwiseClone", function () {
-          return JSIL.$MakeMemberwiseCloner(typeObject, classObject);
-        }
-      );
-    }
-
-    if (classObject.__PreInitMembrane__)
-      classObject.__PreInitMembrane__.maybeInit();
-    if (classObject.prototype && classObject.prototype.__PreInitMembrane__)
-      classObject.prototype.__PreInitMembrane__.maybeInit();
   }
 
-  delete $jsilcore.InFlightObjectConstructions[typeObject.__FullName__];
+  if (!deferred)
+    delete $jsilcore.InFlightObjectConstructions[typeObject.__FullName__];
 
   // Any closed forms of the type, if it's an open type, should be initialized too.
   if (typeof (typeObject.__OfCache__) !== "undefined") {
@@ -4695,38 +4722,29 @@ JSIL.MakeEnum = function (fullName, isPublic, members, isFlagsEnum) {
       throw new Error("Cannot construct an instance of an enum");
     };
 
-    var creatorResult = new JSIL.CreatorResult(assembly, fullName);
+    var creatorResult = new JSIL.CreatorResult(context, fullName);
     var typeObject = creatorResult.typeObject;
+    var publicInterface = creatorResult.publicInterfaceProxy;
 
-    publicInterface.prototype = {};
-    publicInterface.__Type__ = typeObject;
-
-    typeObject.__PublicInterface__ = publicInterface;
-    typeObject.__Context__ = context;
     typeObject.__CallStack__ = callStack;
     typeObject.__FullName__ = fullName; 
     typeObject.__IsArray__ = false;
     typeObject.__IsEnum__ = true;
     typeObject.__IsValueType__ = true;
     typeObject.__IsReferenceType__ = false;
-
-    var typeId = JSIL.AssignTypeId(context, fullName);
-    JSIL.SetValueProperty(typeObject, "__TypeId__", typeId); 
-    JSIL.SetValueProperty(publicInterface, "__TypeId__", typeId); 
-
     typeObject.__IsFlagsEnum__ = isFlagsEnum;
     typeObject.__Interfaces__ = null;
 
     var enumTypeId = JSIL.AssignTypeId($jsilcore, "System.Enum");
 
-    typeObject.__AssignableTypes__ = {};
+    typeObject.__AssignableTypes__ = Object.create(null);
     typeObject.__AssignableTypes__[typeObject.__TypeId__] = true;
     typeObject.__AssignableTypes__[enumTypeId] = true;
 
-    typeObject.__AssignableFromTypes__ = {};
+    typeObject.__AssignableFromTypes__ = Object.create(null);
     typeObject.__AssignableFromTypes__[typeObject.__TypeId__] = true;
     
-    typeObject.__ValueToName__ = {};
+    typeObject.__ValueToName__ = Object.create(null);
     typeObject.__Names__ = [];
 
     JSIL.SetValueProperty(typeObject, "toString", function Type_ToString () {
@@ -4736,13 +4754,6 @@ JSIL.MakeEnum = function (fullName, isPublic, members, isFlagsEnum) {
     JSIL.SetValueProperty(publicInterface, "toString", function Type_ToString () {
       return "<" + fullName + " Public Interface>";
     });
-
-    typeObject.Of$NoInitialize = function () {
-      return typeObject;
-    };
-    typeObject.Of = function () {
-      return typeObject;
-    };
 
     if (isFlagsEnum) {
       publicInterface.$Flags = function FlagsEnum_Flags () {
@@ -4834,7 +4845,7 @@ JSIL.MakeEnum = function (fullName, isPublic, members, isFlagsEnum) {
       creatorResult.publicInterfaceProxy[key] = creatorResult.publicInterfaceProxy.$MakeValue(value, key);
     }
 
-    JSIL.MakeCastMethods($, $.__Type__, "enum");
+    JSIL.MakeCastMethods(creatorResult.publicInterfaceProxy, creatorResult.typeObject, "enum");
   };
 
   JSIL.RegisterName(fullName, $private, isPublic, creator, initializer);
@@ -6260,7 +6271,6 @@ JSIL.GetTypeFromAssembly = function (assembly, typeName, genericArguments, throw
   var resolved, result = null;
 
   var publicInterface = assembly.__PublicInterface__ || assembly;
-  assembly = publicInterface.__Assembly__;
 
   resolved = JSIL.ResolveName(publicInterface, typeName, true, throwOnFail === true);
   if (resolved === null)
@@ -6272,7 +6282,8 @@ JSIL.GetTypeFromAssembly = function (assembly, typeName, genericArguments, throw
     if (JSIL.IsArray(genericArguments) && (genericArguments.length > 0))
       result = result.Of.apply(result, genericArguments);
   } else if (throwOnFail) {
-    throw new System.TypeLoadException("The type '" + typeName + "' could not be found in the assembly '" + assembly.toString() + "'.");
+    var reflectionAssembly = publicInterface.__Assembly__;
+    throw new System.TypeLoadException("The type '" + typeName + "' could not be found in the assembly '" + reflectionAssembly.toString() + "'.");
   }
 
   if (result !== null)
@@ -6389,8 +6400,8 @@ JSIL.GetReflectionCache = function (typeObject) {
 
   var makeTypeInstance = function (type) {
     // Construct the appropriate subclass of MemberInfo
-    var parsedTypeName = JSIL.ParseTypeName("System.Reflection." + type);    
-    var infoType = JSIL.GetTypeInternal(parsedTypeName, $jsilcore, true);
+    var typeName = "System.Reflection." + type;
+    var infoType = JSIL.GetTypeByName(typeName, $jsilcore).__Type__;
     var info = JSIL.CreateInstanceOfType(infoType, null);
 
     return info;
