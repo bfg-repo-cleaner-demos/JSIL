@@ -1199,6 +1199,7 @@ JSIL.Initialize = function () {
   }
 
   var systemObject = $jsilcore.System.Object;
+  var runtimeType = $jsilcore.System.RuntimeType;
   var methodInfo = $jsilcore.System.Reflection.MethodInfo;
 
   while ($jsilcore.DeferredInitializeQueue.length > 0) {
@@ -1472,33 +1473,7 @@ JSIL.CreatorResult = function (assembly, fullName, constructPublicInterface) {
 JSIL.CreatorResult.prototype = Object.create(null);
 
 JSIL.CreatorResult.prototype.transplantMembersFromProxyToPublicInterface = function () {
-  for (var k in this.publicInterfaceProxy) {
-    if (k === "__IsPartiallyConstructed__")
-      continue;
-
-    var currentDescriptor = Object.getOwnPropertyDescriptor(this.publicInterface, k);
-    var newDescriptor = Object.getOwnPropertyDescriptor(this.publicInterfaceProxy, k);
-
-    // WTF, why is .prototype ending up non-configurable? I'm not doing that.
-    if (
-      currentDescriptor && 
-      (currentDescriptor.configurable === false)
-    ) {
-      if (
-        currentDescriptor.writable && 
-        ("value" in newDescriptor)
-      ) {
-        this.publicInterface[k] = newDescriptor.value;
-      } else {
-        throw new Error("Cannot transplant '" + k + "' to public interface: it is non-configurable");
-      }
-    } else {
-      Object.defineProperty(
-        this.publicInterface, k,
-        newDescriptor
-      );
-    }
-  }
+  JSIL.TransplantMembers(this.publicInterface, this.publicInterfaceProxy);
 
   $jsilcore.DeadPublicInterfaces[this.fullName] = this.publicInterfaceProxy;
   this.publicInterfaceProxy = null;
@@ -1525,6 +1500,36 @@ JSIL.CreatorResult.prototype.constructPublicInterface = function () {
   var inFlight = $jsilcore.InFlightObjectConstructions[this.fullName];
   if (inFlight)
     inFlight.publicInterface = this.publicInterface;
+};
+
+JSIL.TransplantMembers = function (dest, source) {
+  for (var k in source) {
+    if (k === "__IsPartiallyConstructed__")
+      continue;
+
+    var currentDescriptor = Object.getOwnPropertyDescriptor(dest, k);
+    var newDescriptor = Object.getOwnPropertyDescriptor(source, k);
+
+    // WTF, why is .prototype ending up non-configurable? I'm not doing that.
+    if (
+      currentDescriptor && 
+      (currentDescriptor.configurable === false)
+    ) {
+      if (
+        currentDescriptor.writable && 
+        ("value" in newDescriptor)
+      ) {
+        dest[k] = newDescriptor.value;
+      } else {
+        throw new Error("Cannot transplant '" + k + "' to public interface: it is non-configurable");
+      }
+    } else {
+      Object.defineProperty(
+        dest, k,
+        newDescriptor
+      );
+    }
+  }
 };
 
 JSIL.RegisterName = function (name, privateNamespace, isPublic, creator, initializer) {
@@ -2633,6 +2638,8 @@ JSIL.FixupInterfaces = function (publicInterface, typeObject) {
   runtimeType.__LockCount__ = 0;
   runtimeType.__FullName__ = "System.RuntimeType";
   runtimeType.__ShortName__ = "RuntimeType";
+
+  runtimeType.prototype = Object.create(null);
 
   $jsilcore.FakeRuntimeType = runtimeType;
 } )();
@@ -4002,19 +4009,23 @@ JSIL.GetCorlib = function () {
 };
 
 $jsilcore.$GetRuntimeType = function (context, forTypeName) {
-  // Break an explicit cycle.
-  if (forTypeName === "System.RuntimeType")
-    return $jsilcore.FakeRuntimeType;
-
-  var inFlight = JSIL.GetInFlightTypeObject("System.RuntimeType", $jsilcore);
+  var inFlight = JSIL.GetInFlightPublicInterface("System.RuntimeType", $jsilcore);
   if (inFlight)
-    return inFlight;
+    return inFlight.prototype;
+
+  // Break an explicit cycle.
+  if (
+    (forTypeName === "System.RuntimeType") ||
+    (forTypeName === "System.Type") ||
+    (forTypeName === "System.Object")
+  )
+    return $jsilcore.FakeRuntimeType.prototype;  
 
   var rn = JSIL.ResolveName($jsilcore, "System.RuntimeType");
   if (JSIL.$RuntimeTypeInitialized && rn.exists())
-    return rn.get();
+    return rn.get().prototype;
 
-  return $jsilcore.FakeRuntimeType;
+  return $jsilcore.FakeRuntimeType.prototype;
 };
 
 JSIL.ApplyGenericMethodsToPublicInterface = function (typeObject, publicInterface) {
