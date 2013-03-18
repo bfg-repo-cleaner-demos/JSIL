@@ -1072,7 +1072,7 @@ JSIL.AttributeRecord.prototype.GetType = function () {
   if (this.resolvedType)
     return this.resolvedType;
 
-  var resolvedType = JSIL.ResolveTypeReference(this.type, this.context)[1];
+  var resolvedType = JSIL.ResolveTypeReferenceAsTypeObject(this.type, this.context);
   if (!resolvedType)
     throw new Error("Failed to resolve attribute type '" + this.type + "'")
 
@@ -1416,6 +1416,19 @@ JSIL.TypeRef.prototype.get = function (allowPartiallyConstructed) {
   }
 
   return this.cachedReference;
+};
+JSIL.TypeRef.prototype.getTypeObject = function (allowPartiallyConstructed) {
+  if (this.cachedReference !== null)
+    return this.cachedReference.__Type__;
+
+  if (allowPartiallyConstructed === true) {
+    var inFlight = JSIL.GetInFlightTypeObject(this.typeName, this.context);
+
+    if (inFlight)
+      return inFlight;
+  }
+
+  return this.get(allowPartiallyConstructed).__Type__;
 };
 
 JSIL.CloneObject = function (obj) {
@@ -2013,12 +2026,72 @@ JSIL.ResolveTypeReference = function (typeReference, context, allowPartiallyCons
   }
 };
 
+JSIL.ResolveTypeReferenceAsTypeObject = function (typeReference, context, allowPartiallyConstructed) {
+  var result = null;
+
+  if (
+    typeof (typeReference) === "undefined"
+  ) {
+    throw new Error("Undefined type reference");
+  } else if (
+    typeof (typeReference) === "string"
+  ) {
+    if (typeReference.indexOf("!!") === 0) {
+      result = new JSIL.PositionalGenericParameter(typeReference, context);
+
+      if (
+        (typeof (context) === "object") && (context !== null) &&
+        (Object.getPrototypeOf(context) === JSIL.MethodSignature.prototype)
+      ) {
+        result = context.genericArgumentNames[result.index];
+      }
+    } else {
+
+      if (
+        (typeof (context) === "object") && (context !== null) &&
+        (Object.getPrototypeOf(context) === JSIL.MethodSignature.prototype)
+      ) {
+        result = JSIL.GetTypeByName(typeReference, context.context);
+      } else {
+        result = JSIL.GetTypeByName(typeReference, context);
+      }
+    }
+  } else if (
+    typeof (typeReference) === "object"
+  ) {
+    if (typeReference === null)
+      throw new Error("Null type reference");
+
+    if (Object.getPrototypeOf(typeReference) === JSIL.TypeRef.prototype)
+      result = typeReference.getTypeObject(allowPartiallyConstructed);
+    else
+      result = typeReference;
+  } else if (
+    typeof (typeReference) === "function"
+  ) {
+    result = typeReference;
+  } else {
+    result = typeReference;
+  }
+
+  if (typeof (result.__Type__) === "object") {
+    return result.__Type__;
+  } else if (
+    typeof (result.__PublicInterface__) !== "undefined"
+  ) {
+    return result;
+  } else {
+    // Awful hack since Object can be a base type
+    return result;
+  }
+};
+
 JSIL.ResolveTypeArgumentArray = function (typeArgs, context) {
   var resolvedArguments = typeArgs;
 
   // Ensure that each argument is the public interface of a type (not the type object or a type reference)
   for (var i = 0, l = resolvedArguments.length; i < l; i++) {
-    resolvedArguments[i] = JSIL.ResolveTypeReference(resolvedArguments[i], context)[1];
+    resolvedArguments[i] = JSIL.ResolveTypeReferenceAsTypeObject(resolvedArguments[i], context);
 
     if (typeof(resolvedArguments[i]) === "undefined")
       throw new Error("Undefined passed as type argument");
@@ -2685,8 +2758,9 @@ JSIL.EscapeJSIdentifier = function (identifier) {
 
 JSIL.CreateNamedFunction = function (name, argumentNames, body, closure) {
   var uriRe = /[\<\>\+\/\\\.]/g;
+  var slashRe = /\//g;
   var strictPrefix = "\"use strict\";\r\n";
-  var uriPrefix = "//@ sourceURL=jsil://closure/" + name + "\r\n";
+  var uriPrefix = "//@ sourceURL=jsil://closure/" + name.replace(slashRe, ".") + "\r\n";
 
   var escapedFunctionIdentifier = JSIL.EscapeJSIdentifier(name);
   var rawFunctionText = "function " + escapedFunctionIdentifier + "(" +
@@ -2743,14 +2817,14 @@ JSIL.ForceToDouble = function (value) {
   }
 };
 
-JSIL.MakeFieldInitializer = function (typeObject, returnNamedFunction) {
+JSIL.MakeFieldInitializer = function (typeObject, returnNamedFunction, body, closure) {
   var fl = JSIL.GetFieldList(typeObject);
   if ((fl.length < 1) && returnNamedFunction)
     return $jsilcore.FunctionNull;
 
-  var prototype = typeObject.__PublicInterface__.prototype;
-  var body = [];
-  
+  if (!body)
+    body = [];
+
   var types = {};
   var defaults = {};
 
@@ -2771,7 +2845,16 @@ JSIL.MakeFieldInitializer = function (typeObject, returnNamedFunction) {
 
     if (field.isStruct) {
       body.push(JSIL.FormatMemberAccess(targetArgName, field.name) + " = new types." + key + "();");
-      types[key] = field.type.__PublicInterface__;
+      var publicInterface = field.type.__PublicInterface__;
+
+      if (publicInterface) {
+        types[key] = publicInterface;
+      } else {
+        JSIL.Host.warning("Deferring resolution of public interface for type '" + field.type.__FullName__ + "' in field initializer for type '" + typeObject.__FullName__ + "'");
+        JSIL.SetLazyValueProperty(types, key, (function () {
+          return this.__PublicInterface__;
+        }).bind(field.type));
+      }
     } else if (field.type.__IsNativeType__ && field.type.__IsNumeric__) {
       // This is necessary because JS engines are incredibly dumb about figuring out the actual type(s)
       //  an object's field slots should be.
@@ -2797,27 +2880,26 @@ JSIL.MakeFieldInitializer = function (typeObject, returnNamedFunction) {
 
   }
 
-  var initializerClosure = { 
-    types: types, 
-    defaults: defaults, 
-    defaultInt: defaultInt, 
-    defaultFloat: defaultFloat 
-  };
+  if (!closure)
+    closure = Object.create(null);
+
+  closure.types = types;
+  closure.defaults = defaults;
+  closure.defaultInt = defaultInt;
+  closure.defaultFloat = defaultFloat;
 
   if (returnNamedFunction) {
     var boundFunction = JSIL.CreateNamedFunction(
       typeObject.__FullName__ + ".InitializeFields",
       ["target"],
       body.join("\r\n"),
-      initializerClosure
+      closure
     );
 
     boundFunction.__ThisType__ = typeObject;
     JSIL.SetValueProperty(boundFunction, "__ThisTypeId__", typeObject.__TypeId__);
 
     return boundFunction;
-  } else {
-    return [body, initializerClosure];
   }
 };
 
@@ -2967,11 +3049,13 @@ JSIL.$MakeMemberwiseCloner = function (typeObject, publicInterface) {
   return memberwiseCloner;
 };
 
+$jsilcore.FieldListNotAvailable = new Object();
+
 JSIL.$BuildFieldList = function (typeObject) {
   var fields = JSIL.GetMembersInternal(
     typeObject, $jsilcore.BindingFlags.Instance, "FieldInfo"
   );
-  var fl = typeObject.__FieldList__ = [];
+  var fl = [];
   var fieldOffset = 0;
 
   $fieldloop:
@@ -2985,6 +3069,10 @@ JSIL.$BuildFieldList = function (typeObject) {
       didGenericResolve = true;
 
       var fieldTypeRef = fieldType;
+
+      if (!typeObject.__PublicInterface__)
+        return $jsilcore.FieldListNotAvailable;
+
       fieldType = JSIL.$ResolveGenericTypeReferenceInternal(fieldType, typeObject.__PublicInterface__.prototype);
 
       if (!fieldType) {
@@ -2997,7 +3085,7 @@ JSIL.$BuildFieldList = function (typeObject) {
     }
 
     if (!didGenericResolve) {
-      fieldType = JSIL.ResolveTypeReference(fieldType, typeObject.__Context__)[1];
+      fieldType = JSIL.ResolveTypeReferenceAsTypeObject(fieldType, typeObject.__Context__, true);
     }
 
     if ((typeof (fieldType) === "undefined") || (fieldType === null))
@@ -3036,7 +3124,7 @@ JSIL.$BuildFieldList = function (typeObject) {
     return JSIL.CompareValues(lhs.name, rhs.name);
   })
 
-  return fl;
+  return typeObject.__FieldList__ = fl;
 };
 
 JSIL.$ResolveGenericTypeReferences = function (context, types) {
@@ -3703,7 +3791,7 @@ JSIL.BuildTypeList = function (type, publicInterface) {
         if (ifaceRef === null)
           continue;
 
-        var iface = JSIL.ResolveTypeReference(ifaceRef, context)[1];
+        var iface = JSIL.ResolveTypeReferenceAsTypeObject(ifaceRef, context);
         toVisit.push(iface);
       }
     }
@@ -4419,7 +4507,7 @@ JSIL.MakeTypeAlias = function (sourceAssembly, fullName) {
   );
 };
 
-JSIL.MakeTypeConstructor = function (typeObject) {
+JSIL.MakeTypeConstructor = function (typeObject, inlineFieldInitializer) {
   var ctorClosure = {
     typeObject: typeObject,
     fieldInitializer: $jsilcore.FunctionNotInitialized,
@@ -4428,13 +4516,44 @@ JSIL.MakeTypeConstructor = function (typeObject) {
   var ctorBody = [];
   var argumentNames = [];
 
-  ctorBody.push("if (!isTypeInitialized) {");
-  ctorBody.push("  JSIL.RunStaticConstructors(typeObject.__PublicInterface__, typeObject);");
-  ctorBody.push("  fieldInitializer = JSIL.MakeFieldInitializer(typeObject, true);");
-  ctorBody.push("  isTypeInitialized = true;");
-  ctorBody.push("}");
+  if (inlineFieldInitializer) {
+    // Scan the field list to see if any of the fields are referencing types that are
+    //  currently being constructed. If they are, we can't generate an inline initializer.
+    var fields = JSIL.GetFieldList(typeObject);
 
-  ctorBody.push("fieldInitializer(this);");
+    if (fields === $jsilcore.FieldListNotAvailable) {
+      // This indicates that the field list isn't available because the type isn't fully constructed
+      // This usually is caused by generics.
+      inlineFieldInitializer = false;
+    } else {
+      for (var i = 0, l = fields.length; i < l; i++) {
+        var field = fields[i];
+
+        if (field.type.__FullName__ in $jsilcore.InFlightObjectConstructions) {
+          JSIL.Host.warning("Optimized constructor disabled for type '" + typeObject.__FullName__ + "' because field '" + field.name + "' references a partially constructed type");
+          inlineFieldInitializer = false;
+          break;
+        }
+      }
+    }
+  }
+
+  if (inlineFieldInitializer) {
+    ctorBody.push("if (!isTypeInitialized) {");
+    ctorBody.push("  JSIL.RunStaticConstructors(typeObject.__PublicInterface__, typeObject);");
+    ctorBody.push("  isTypeInitialized = true;");
+    ctorBody.push("}");
+
+    JSIL.MakeFieldInitializer(typeObject, false, ctorBody, ctorClosure);
+  } else {
+    ctorBody.push("if (!isTypeInitialized) {");
+    ctorBody.push("  JSIL.RunStaticConstructors(typeObject.__PublicInterface__, typeObject);");
+    ctorBody.push("  fieldInitializer = JSIL.MakeFieldInitializer(typeObject, true);");
+    ctorBody.push("  isTypeInitialized = true;");
+    ctorBody.push("}");
+
+    ctorBody.push("fieldInitializer(this);");
+  }
 
   ctorBody.push("var argc = arguments.length;");
   ctorBody.push("if (argc === 0)");
@@ -4488,6 +4607,12 @@ JSIL.TypeRefRecursivelyReferencesType = function (typeRef, type) {
   return false;
 };
 
+$jsilcore.OptimizedConstructorDisabledForTypes = [
+  "System.Object", "System.Type", "System.RuntimeType",
+  "System.Reflection.MemberInfo", "System.Reflection.FieldInfo", 
+  "System.Reflection.MethodBase", "System.Reflection.MethodInfo", "System.Reflection.PropertyInfo"
+];
+
 JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, genericArguments, initializer) {
   if (typeof (isPublic) === "undefined")
     JSIL.Host.abort(new Error("Must specify isPublic"));
@@ -4502,7 +4627,8 @@ JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, generic
 
   var typeObject, staticClassObject;
   var isGeneric = genericArguments && genericArguments.length;
-  var enableOptimizedConstructor = true;
+  var enableOptimizedConstructor = !isGeneric && 
+    $jsilcore.OptimizedConstructorDisabledForTypes.indexOf(fullName) < 0;
 
   var makeConstructor = function () {
     var result = JSIL.MakeTypeConstructor(typeObject, enableOptimizedConstructor);
@@ -4528,7 +4654,7 @@ JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, generic
       creatorResult.constructPublicInterface();
     }
 
-    typeObject.__BaseType__ = JSIL.ResolveTypeReference(baseType, assembly, true)[1];
+    typeObject.__BaseType__ = JSIL.ResolveTypeReferenceAsTypeObject(baseType, assembly, true);
     var baseTypeName = typeObject.__BaseType__.__FullName__ || baseType.toString();
     var baseTypeInterfaces = typeObject.__BaseType__.__Interfaces__ || [];
 
@@ -5656,11 +5782,11 @@ JSIL.MethodSignature.prototype.Resolve = function (name) {
   var resolvedReturnType = null;
 
   if (this.returnType !== null) {
-    resolvedReturnType = JSIL.ResolveTypeReference(this.returnType, this)[1];
+    resolvedReturnType = JSIL.ResolveTypeReferenceAsTypeObject(this.returnType, this);
   }
 
   for (var i = 0; i < this.argumentTypes.length; i++) {
-    argTypes[i] = JSIL.ResolveTypeReference(this.argumentTypes[i], this)[1];
+    argTypes[i] = JSIL.ResolveTypeReferenceAsTypeObject(this.argumentTypes[i], this);
   }
 
   return new JSIL.ResolvedMethodSignature(
@@ -5687,7 +5813,7 @@ JSIL.MethodSignature.prototype.toString = function (name) {
   var signature;
 
   if (this.returnType !== null) {
-    signature = this.ResolveTypeReference(this.returnType)[1].toString(this) + " ";
+    signature = this.ResolveTypeReferenceAsTypeObject(this.returnType).toString(this) + " ";
   } else {
     signature = "void ";
   }
