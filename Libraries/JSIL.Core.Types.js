@@ -137,8 +137,6 @@ JSIL.MakeClass(Object, "System.Object", true, [], function ($) {
   $.ExternalMethod({Static: false, Public: true}, "toString",
     new JSIL.MethodSignature("System.String", [], [], $jsilcore)
   );
-
-  $jsilcore.SystemObjectInitialized = true;
 });
 
 JSIL.ImplementExternals(
@@ -1097,7 +1095,7 @@ JSIL.ImplementExternals(
   }
 );
 
-JSIL.MakeClass("System.Object", "System.Reflection.MemberInfo", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Object"), "System.Reflection.MemberInfo", true, [], function ($) {
     $.Property({Public: true , Static: false, Virtual: true }, "DeclaringType");
     $.Property({Public: true , Static: false, Virtual: true }, "Name");
     $.Property({Public: true , Static: false, Virtual: true }, "IsPublic");
@@ -1105,7 +1103,7 @@ JSIL.MakeClass("System.Object", "System.Reflection.MemberInfo", true, [], functi
     $.Property({Public: true , Static: false, Virtual: true }, "IsSpecialName");
 });
 
-JSIL.MakeClass("System.Reflection.MemberInfo", "System.Type", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Reflection.MemberInfo"), "System.Type", true, [], function ($) {
     $.Property({Public: true , Static: false, Virtual: true }, "Module");
     $.Property({Public: true , Static: false, Virtual: true }, "Assembly");
     $.Property({Public: true , Static: false, Virtual: true }, "FullName");
@@ -1119,31 +1117,31 @@ JSIL.MakeClass("System.Reflection.MemberInfo", "System.Type", true, [], function
     $.Property({Public: true , Static: false }, "IsEnum");
 });
 
-JSIL.MakeClass("System.Type", "System.RuntimeType", false, [], function ($) {
-  $jsilcore.RuntimeTypeInitialized = true;
+JSIL.MakeClass($jsilcore.TypeRef("System.Type"), "System.RuntimeType", false, [], function ($) {
+  JSIL.$RuntimeTypeInitialized = true;
 });
 
-JSIL.MakeClass("System.Reflection.MemberInfo", "System.Reflection.MethodBase", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Reflection.MemberInfo"), "System.Reflection.MethodBase", true, [], function ($) {
 });
 
-JSIL.MakeClass("System.Reflection.MethodBase", "System.Reflection.MethodInfo", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Reflection.MethodBase"), "System.Reflection.MethodInfo", true, [], function ($) {
     $.Property({Public: true , Static: false}, "ReturnType");
 });
 
-JSIL.MakeClass("System.Reflection.MethodBase", "System.Reflection.ConstructorInfo", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Reflection.MethodBase"), "System.Reflection.ConstructorInfo", true, [], function ($) {
 });
 
-JSIL.MakeClass("System.Reflection.MemberInfo", "System.Reflection.FieldInfo", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Reflection.MemberInfo"), "System.Reflection.FieldInfo", true, [], function ($) {
     $.Property({Public: true , Static: false}, "FieldType");
 });
 
-JSIL.MakeClass("System.Reflection.MemberInfo", "System.Reflection.EventInfo", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Reflection.MemberInfo"), "System.Reflection.EventInfo", true, [], function ($) {
 });
 
-JSIL.MakeClass("System.Reflection.MemberInfo", "System.Reflection.PropertyInfo", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Reflection.MemberInfo"), "System.Reflection.PropertyInfo", true, [], function ($) {
 });
 
-JSIL.MakeClass("System.Object", "System.Reflection.Assembly", true, [], function ($) {
+JSIL.MakeClass($jsilcore.TypeRef("System.Object"), "System.Reflection.Assembly", true, [], function ($) {
   $.RawMethod(false, ".ctor", function (publicInterface, fullName) {
     this.__PublicInterface__ = publicInterface;
     this.__FullName__ = fullName;
