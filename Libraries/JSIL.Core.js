@@ -5809,6 +5809,10 @@ JSIL.MethodSignature.prototype.ResolveTypeReference = function (typeReference) {
   return JSIL.ResolveTypeReference(typeReference, this);
 };
 
+JSIL.MethodSignature.prototype.ResolveTypeReferenceAsTypeObject = function (typeReference) {
+  return JSIL.ResolveTypeReferenceAsTypeObject(typeReference, this);
+};
+
 JSIL.MethodSignature.prototype.toString = function (name) {
   var signature;
 
