@@ -2282,8 +2282,7 @@ $jsilcore.$Of$NoInitialize = function () {
   return result;
 };
 
-$jsilcore.$MakeOf = function (publicInterface) {
-  var typeObject = publicInterface.__Type__;
+$jsilcore.$MakeOf = function (typeObject, publicInterface) {
   var typeName = typeObject.__FullName__;
 
   return JSIL.CreateNamedFunction(
@@ -3982,6 +3981,11 @@ $jsilcore.$GetRuntimeType = function (context, forTypeName) {
   return $jsilcore.FakeRuntimeType;
 };
 
+JSIL.ApplyGenericMethodsToPublicInterface = function (typeObject, publicInterface) {
+  publicInterface.Of$NoInitialize = $jsilcore.$Of$NoInitialize.bind(publicInterface);
+  publicInterface.Of = $jsilcore.$MakeOf(typeObject, publicInterface);
+};
+
 JSIL.MakeStaticClass = function (fullName, isPublic, genericArguments, initializer) {
   if (typeof (isPublic) === "undefined")
     JSIL.Host.abort(new Error("Must specify isPublic"));
@@ -3996,12 +4000,19 @@ JSIL.MakeStaticClass = function (fullName, isPublic, genericArguments, initializ
   var memberBuilder = new JSIL.MemberBuilder($private);
 
   var typeObject, staticClassObject;
+  var isGeneric = genericArguments && genericArguments.length;
 
   var creator = function CreateStaticClassObject () {
     var creatorResult = new JSIL.CreatorResult(assembly, fullName, function () {
-      return JSIL.CloneObject(JSIL.StaticClassPrototype);
+      var result = JSIL.CloneObject(JSIL.StaticClassPrototype);
+
+      if (isGeneric)
+        JSIL.ApplyGenericMethodsToPublicInterface(typeObject, result);
+
+      return result;
     });
-    var typeObject = creatorResult.typeObject;
+
+    typeObject = creatorResult.typeObject;
 
     typeObject.__CallStack__ = callStack;
     typeObject.__InheritanceDepth__ = 1;
@@ -4018,20 +4029,13 @@ JSIL.MakeStaticClass = function (fullName, isPublic, genericArguments, initializ
     typeObject.__TypeInitialized__ = false;
     typeObject.__GenericArguments__ = genericArguments || [];
     typeObject.__Attributes__ = memberBuilder.attributes;
-
     typeObject.IsInterface = false;
+    typeObject.__IsClosed__ = !isGeneric;
 
-    var staticClassObject = creatorResult.publicInterfaceProxy;
+    if (isGeneric)
+      typeObject.__OfCache__ = Object.create(null);
 
-    if (typeObject.__GenericArguments__.length > 0) {
-      // FIXME
-      staticClassObject.Of$NoInitialize = $jsilcore.$Of$NoInitialize.bind(staticClassObject);
-      staticClassObject.Of = $jsilcore.$MakeOf(staticClassObject);
-      typeObject.__IsClosed__ = false;
-      typeObject.__OfCache__ = {};
-    } else {
-      typeObject.__IsClosed__ = true;
-    }
+    staticClassObject = creatorResult.publicInterfaceProxy;
 
     for (var i = 0, l = typeObject.__GenericArguments__.length; i < l; i++) {
       var ga = typeObject.__GenericArguments__[i];
@@ -4413,9 +4417,15 @@ JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, generic
     stack = printStackTrace();
 
   var typeObject, staticClassObject;
+  var isGeneric = genericArguments && genericArguments.length;
 
   var makeConstructor = function () {
-    return JSIL.MakeTypeConstructor(typeObject);
+    var result = JSIL.MakeTypeConstructor(typeObject);
+
+    if (isGeneric)
+      JSIL.ApplyGenericMethodsToPublicInterface(typeObject, result);
+
+    return result;
   };
 
   var createTypeObject = function CreateTypeObject () {
@@ -4499,9 +4509,7 @@ JSIL.MakeType = function (baseType, fullName, isReferenceType, isPublic, generic
     staticClassObject.prototype = JSIL.MakeProto(baseType, typeObject, fullName, false, assembly);
     staticClassObject.prototype.__ShortName__ = localName;
 
-    if (typeObject.__GenericArguments__.length > 0) {
-      staticClassObject.Of$NoInitialize = $jsilcore.$Of$NoInitialize.bind(staticClassObject);
-      staticClassObject.Of = $jsilcore.$MakeOf(staticClassObject);
+    if (isGeneric) {
       typeObject.__IsClosed__ = false;
       typeObject.__OfCache__ = {};
     } else {
