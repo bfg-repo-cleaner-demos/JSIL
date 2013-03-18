@@ -1196,7 +1196,6 @@ JSIL.Initialize = function () {
   //  in the reflection machinery.
   var typesToForceInitialize = [
     $jsilcore.System.Object,
-    $jsilcore.System.Array,
     $jsilcore.System.Reflection.MemberInfo,
     $jsilcore.System.Reflection.FieldInfo,
     $jsilcore.System.Reflection.MethodInfo,
@@ -1513,6 +1512,10 @@ JSIL.CreatorResult.prototype.constructPublicInterface = function () {
   this.publicInterface.__Type__ = this.typeObject;
 
   this.transplantMembersFromProxyToPublicInterface();
+
+  JSIL.SetValueProperty(this.publicInterface, "__TypeId__", this.typeId);
+  if (this.publicInterface.prototype)
+    JSIL.SetValueProperty(this.publicInterface.prototype, "__TypeId__", this.typeId);
 
   var inFlight = $jsilcore.InFlightObjectConstructions[this.fullName];
   if (inFlight)
