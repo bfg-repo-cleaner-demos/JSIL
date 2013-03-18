@@ -6715,7 +6715,9 @@ JSIL.MakeDelegate = function (fullName, isPublic, genericArguments) {
 
   var creator = function CreateDelegate () {
     var creatorResult = new JSIL.CreatorResult(assembly, fullName, function () {
-      var result = JSIL.CloneObject(JSIL.StaticClassPrototype);
+      var result = function Delegate__ctor () {
+        throw new Error("Cannot construct an instance of a delegate type");
+      };
 
       if (isGeneric)
         JSIL.ApplyGenericMethodsToPublicInterface(typeObject, result);
@@ -6790,10 +6792,8 @@ JSIL.MakeDelegate = function (fullName, isPublic, genericArguments) {
     );
 
     if (typeObject.__GenericArguments__.length > 0) {
-      staticClassObject.Of$NoInitialize = $jsilcore.$Of$NoInitialize.bind(staticClassObject);
-      staticClassObject.Of = $jsilcore.$MakeOf(staticClassObject);
       typeObject.__IsClosed__ = false;
-      typeObject.__OfCache__ = {};
+      typeObject.__OfCache__ = Object.create(null);
     } else {
       typeObject.__IsClosed__ = true;
       typeObject.__AssignableFromTypes__ = {};
