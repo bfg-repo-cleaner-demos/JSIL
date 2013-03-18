@@ -1233,7 +1233,12 @@ JSIL.GenericParameter = function (name, context) {
   JSIL.SetValueProperty(this, "__FullName__", this.name.humanReadable);
 };
 JSIL.GenericParameter.prototype.get = function (context) {
-  if ((typeof (context) !== "object") && (typeof (context) !== "function")) {
+  if (
+    (!context) || (
+      (typeof (context) !== "object") && 
+      (typeof (context) !== "function")
+    )
+  ) {
     throw new Error("No context provided when resolving generic parameter '" + this.name + "'");
     return JSIL.AnyType;
   }
@@ -2075,14 +2080,18 @@ $jsilcore.$Of$NoInitialize = function () {
     for (var i = 0; i < ga.length; i++)
       gaNames[i] = new JSIL.Name(ga[i], typeObject.__FullName__);
   }
+
+  var resolveContext;
   
   if (typeof (staticClassObject.prototype) !== "undefined") {
-    var resolveContext = JSIL.CloneObject(staticClassObject.prototype);
+    resolveContext = JSIL.CloneObject(staticClassObject.prototype);
     for (var i = 0; i < resolvedArguments.length; i++) {
       gaNames[i].set(resolveContext, resolvedArguments[i]);
     }
 
     JSIL.$ResolveGenericTypeReferences(typeObject, resolvedArguments);
+  } else {
+    resolveContext = null;
   }
 
   var resultTypeObject = JSIL.CloneObject(typeObject);
@@ -3769,7 +3778,7 @@ JSIL.InitializeType = function (type) {
   if (typeof (typeObject.__OfCache__) !== "undefined") {
     var oc = typeObject.__OfCache__;
     for (var k in oc) {
-      if (!oc.hasOwnProperty(k))
+      if (!Object.hasOwnProperty.call(oc, k))
         continue;
 
       JSIL.InitializeType(oc[k]);
@@ -4603,14 +4612,22 @@ JSIL.MakeInterface = function (fullName, isPublic, genericArguments, initializer
   if (typeof (printStackTrace) === "function")
     callStack = printStackTrace();
 
+  var typeObject, publicInterface;
+  var isGeneric = genericArguments && genericArguments.length;
+
   var creator = function CreateInterface () {
     var creatorResult = new JSIL.CreatorResult(assembly, fullName, function () {
-      return function Interface__ctor () {
+      var result = function Interface__ctor () {
         throw new Error("Cannot construct an instance of an interface");
       };
+
+      if (isGeneric)
+        JSIL.ApplyGenericMethodsToPublicInterface(typeObject, result);
+
+      return result;
     });
-    var typeObject = creatorResult.typeObject;
-    var publicInterface = creatorResult.publicInterfaceProxy;
+    typeObject = creatorResult.typeObject;
+    publicInterface = creatorResult.publicInterfaceProxy;
 
     typeObject.__CallStack__ = callStack;
 
@@ -4630,11 +4647,8 @@ JSIL.MakeInterface = function (fullName, isPublic, genericArguments, initializer
     });
 
     if (typeObject.__GenericArguments__.length > 0) {
-      // FIXME: Binding to proxy
-      publicInterface.Of$NoInitialize = $jsilcore.$Of$NoInitialize.bind(publicInterface);
-      publicInterface.Of = $jsilcore.$MakeOf(publicInterface);
       typeObject.__IsClosed__ = false;
-      typeObject.__OfCache__ = {};
+      typeObject.__OfCache__ = Object.create(null);
     } else {
       typeObject.__IsClosed__ = true;
       typeObject.__AssignableFromTypes__ = {};
