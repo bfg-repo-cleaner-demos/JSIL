@@ -6710,7 +6710,19 @@ JSIL.MakeDelegate = function (fullName, isPublic, genericArguments) {
   if (typeof (printStackTrace) === "function")
     callStack = printStackTrace();
 
+  var typeObject, staticClassObject;
+  var isGeneric = genericArguments && genericArguments.length;
+
   var creator = function CreateDelegate () {
+    var creatorResult = new JSIL.CreatorResult(assembly, fullName, function () {
+      var result = JSIL.CloneObject(JSIL.StaticClassPrototype);
+
+      if (isGeneric)
+        JSIL.ApplyGenericMethodsToPublicInterface(typeObject, result);
+
+      return result;
+    });
+
     // Hack around the fact that every delegate type except MulticastDelegate derives from MulticastDelegate
     var delegateType;
     if (fullName === "System.MulticastDelegate") {
@@ -6719,9 +6731,8 @@ JSIL.MakeDelegate = function (fullName, isPublic, genericArguments) {
       delegateType = JSIL.GetTypeByName("System.MulticastDelegate", $jsilcore);
     }
 
-    var typeObject = Object.create(JSIL.TypeObjectPrototype);
+    typeObject = creatorResult.typeObject;
 
-    typeObject.__Context__ = assembly;
     typeObject.__BaseType__ = delegateType;
     typeObject.__FullName__ = fullName;
     typeObject.__CallStack__ = callStack;
@@ -6733,8 +6744,7 @@ JSIL.MakeDelegate = function (fullName, isPublic, genericArguments) {
 
     typeObject.__GenericArguments__ = genericArguments || [];
 
-    var staticClassObject = typeObject.__PublicInterface__ = Object.create(JSIL.StaticClassPrototype);
-    staticClassObject.__Type__ = typeObject;
+    staticClassObject = creatorResult.publicInterfaceProxy;
 
     var toStringImpl = function DelegateType_ToString () {
       return this.__ThisType__.toString();
