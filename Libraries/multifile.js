@@ -23,9 +23,11 @@ THE SOFTWARE.
 
 Updated 6-2013 by K. Gadd (kg@luminance.org):
   Fixed broken length parsing in headers
-  Changed header.data to a byte array instead of a string
+  Changed header.data to getText/getBytes method calls
   Removed JSON parsing support
   Added onerror argument to .load()/.stream()
+  Made header objects an actual type and made their properties lazy to avoid string leaks  
+  Implemented support for LongLink long filenames
 
 */
 
