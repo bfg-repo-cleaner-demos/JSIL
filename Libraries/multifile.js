@@ -202,6 +202,7 @@ TarFileEntry.prototype.getBytes = function () {
   }
 
   var offset = this.sourceOffset | 0;
+  var text = this.source;
 
   for (var i = 0, l = this.length | 0; i < l; i = (i + 1) | 0)
     result[i] = text.charCodeAt((i + offset) | 0) & 0xFF;

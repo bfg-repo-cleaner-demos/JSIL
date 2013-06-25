@@ -348,19 +348,19 @@ var finishLoadingScript = function (state, path, onError, scriptText) {
     JSIL.loadGlobalScript(path, callback);
 };
 
-var loadScriptInternal = function (uri, args) {
-  var absoluteUrl = getAbsoluteUrl(uri);
+var loadScriptInternal = function (root, args) {
+  var absoluteUrl = getAbsoluteUrl(root + args.filename);
 
   if (absoluteUrl.indexOf("file://") === 0) {
     // No browser properly supports XHR against file://
     args.onDoneLoading(function () {
-      finishLoadingScript(args.state, uri, args.onError, null);
+      finishLoadingScript(args.state, absoluteUrl, args.onError, null);
     });
   } else {
-    args.loadText(uri, function (result, error) {
+    args.loadText(root, function (result, error) {
       if ((result !== null) && (!error))
         args.onDoneLoading(function () {
-          finishLoadingScript(args.state, uri, args.onError, result);
+          finishLoadingScript(args.state, absoluteUrl, args.onError, result);
         });
       else
         args.onError(error);
@@ -370,13 +370,11 @@ var loadScriptInternal = function (uri, args) {
 
 var assetLoaders = {
   "Library": function loadLibrary (args) {
-    var uri = jsilConfig.libraryRoot + args.filename;
-    loadScriptInternal(uri, args);
+    loadScriptInternal(jsilConfig.libraryRoot, args);
   },
 
   "Script": function loadScript (args) {
-    var uri = jsilConfig.scriptRoot + args.filename;
-    loadScriptInternal(uri, args);
+    loadScriptInternal(jsilConfig.scriptRoot, args);
   },
 
   "Image": function loadImage (args) {
@@ -409,11 +407,17 @@ var assetLoaders = {
 
     JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError);
     JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher));
-    e.src = jsilConfig.contentRoot + args.filename;
+
+    args.resolveUrl(
+      jsilConfig.contentRoot, "", null,
+      function (url) {
+        e.src = url;
+      }
+    );
   },
 
   "File": function loadFile (args) {
-    args.loadBytes(jsilConfig.fileRoot + args.filename, function (result, error) {
+    args.loadBytes(jsilConfig.fileRoot, function (result, error) {
       if ((result !== null) && (!error)) {
         $jsilbrowserstate.allFileNames.push(args.filename);
         allFiles[args.filename.toLowerCase()] = result;
@@ -426,7 +430,7 @@ var assetLoaders = {
   },
 
   "SoundBank": function loadSoundBank (args) {
-    args.loadText(jsilConfig.contentRoot + args.filename, function (result, error) {
+    args.loadText(jsilConfig.contentRoot, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
           $jsilbrowserstate.allAssetNames.push(args.filename);
@@ -441,7 +445,7 @@ var assetLoaders = {
   },
 
   "Resources": function loadResources (args) {
-    args.loadText(jsilConfig.scriptRoot + args.filename, function (result, error) {
+    args.loadText(jsilConfig.scriptRoot, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
           $jsilbrowserstate.allAssetNames.push(args.filename);
@@ -458,7 +462,7 @@ var assetLoaders = {
 
 function $makeXNBAssetLoader (key, typeName) {
   assetLoaders[key] = function (args) {
-    args.loadBytes(jsilConfig.contentRoot + args.filename, function (result, error) {
+    args.loadBytes(jsilConfig.contentRoot, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
           $jsilbrowserstate.allAssetNames.push(args.filename);
@@ -492,7 +496,7 @@ function loadImageCORSHack (e, args) {
     mimeType = "image/jpeg";
   }
 
-  args.loadBytes(sourceURL, function (result, error) {
+  args.loadBytes(jsilConfig.contentRoot, function (result, error) {
     if ((result !== null) && (!error)) {
       var objectURL = null;
       try {

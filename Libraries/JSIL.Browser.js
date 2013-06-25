@@ -827,28 +827,52 @@ JSIL.LoaderArgs = function (assetSpec, onDoneLoading, onError, state) {
 
 JSIL.LoaderArgs.prototype = Object.create(Object.prototype);
 
-JSIL.LoaderArgs.prototype.loadText = function (uri, onComplete) {
+JSIL.LoaderArgs.prototype.resolveUrl = function (pathPrefix, pathSuffix, mimeType, onComplete) {
+  if (!pathSuffix)
+    pathSuffix = "";
+
   if (this.tarFile) {
-    this.tarFile.getFile(this.filename, function (result, error) {
+    this.tarFile.getFile(this.filename + pathSuffix, function (result, error) {
+      if (result) {
+        var bytes = result.getBytes();
+        var objectUrl = JSIL.GetObjectURLForBytes(bytes, mimeType);
+        onComplete(objectUrl, error);
+      } else
+        onComplete(null, error);
+    });
+  } else {
+    onComplete(pathPrefix + this.filename + pathSuffix, null);
+  }
+};
+
+JSIL.LoaderArgs.prototype.loadText = function (pathPrefix, onComplete, pathSuffix) {
+  if (!pathSuffix)
+    pathSuffix = "";
+
+  if (this.tarFile) {
+    this.tarFile.getFile(this.filename + pathSuffix, function (result, error) {
       if (result)
         onComplete(result.getText(), error);
       else
         onComplete(null, error);
     });
   } else
-    loadTextAsync(uri, onComplete);
+    loadTextAsync(pathPrefix + this.filename + pathSuffix, onComplete);
 };
 
-JSIL.LoaderArgs.prototype.loadBytes = function (uri, onComplete) {
+JSIL.LoaderArgs.prototype.loadBytes = function (pathPrefix, onComplete, pathSuffix) {
+  if (!pathSuffix)
+    pathSuffix = "";
+
   if (this.tarFile) {
-    this.tarFile.getFile(this.filename, function (result, error) {
+    this.tarFile.getFile(this.filename + pathSuffix, function (result, error) {
       if (result)
         onComplete(result.getBytes(), error);
       else
         onComplete(null, error);
     });
   } else
-    loadBinaryFileAsync(uri, onComplete);
+    loadBinaryFileAsync(pathPrefix + this.filename + pathSuffix, onComplete);
 };
 
 
