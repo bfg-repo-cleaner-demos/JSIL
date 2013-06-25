@@ -356,7 +356,7 @@ var loadScriptInternal = function (uri, args) {
       finishLoadingScript(args.state, uri, args.onError, null);
     });
   } else {
-    loadTextAsync(uri, function (result, error) {
+    args.loadText(uri, function (result, error) {
       if ((result !== null) && (!error))
         args.onDoneLoading(function () {
           finishLoadingScript(args.state, uri, args.onError, args.result);
@@ -412,41 +412,44 @@ var assetLoaders = {
   },
 
   "File": function loadFile (args) {
-    loadBinaryFileAsync(jsilConfig.fileRoot + args.filename, function (result, error) {
+    args.loadBytes(jsilConfig.fileRoot + args.filename, function (result, error) {
       if ((result !== null) && (!error)) {
-        $jsilbrowserstate.allFileNames.push(filename);
-        allFiles[filename.toLowerCase()] = result;
-        onDoneLoading(null); 
+        $jsilbrowserstate.allFileNames.push(args.filename);
+        allFiles[args.filename.toLowerCase()] = result;
+
+        args.onDoneLoading(null); 
       } else {
-        onError(error);
+        args.onError(error);
       }
     });
   },
 
   "SoundBank": function loadSoundBank (args) {
-    loadTextAsync(jsilConfig.contentRoot + args.filename, function (result, error) {
+    args.loadText(jsilConfig.contentRoot + args.filename, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
-          $jsilbrowserstate.allAssetNames.push(filename);
-          allAssets[getAssetName(filename)] = JSON.parse(result);
+          $jsilbrowserstate.allAssetNames.push(args.filename);
+          allAssets[getAssetName(args.filename)] = JSON.parse(result);
         };
-        onDoneLoading(finisher);
+
+        args.onDoneLoading(finisher);
       } else {
-        onError(error);
+        args.onError(error);
       }
     });
   },
 
   "Resources": function loadResources (args) {
-    loadTextAsync(jsilConfig.scriptRoot + args.filename, function (result, error) {
+    args.loadText(jsilConfig.scriptRoot + args.filename, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
-          $jsilbrowserstate.allAssetNames.push(filename);
-          allAssets[getAssetName(filename)] = JSON.parse(result);
+          $jsilbrowserstate.allAssetNames.push(args.filename);
+          allAssets[getAssetName(args.filename)] = JSON.parse(result);
         };
-        onDoneLoading(finisher);
+
+        args.onDoneLoading(finisher);
       } else {
-        onError(error);
+        args.onError(error);
       }
     });
   }
@@ -454,19 +457,20 @@ var assetLoaders = {
 
 function $makeXNBAssetLoader (key, typeName) {
   assetLoaders[key] = function (args) {
-    loadBinaryFileAsync(jsilConfig.contentRoot + filename, function (result, error) {
+    args.loadBytes(jsilConfig.contentRoot + args.filename, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
-          $jsilbrowserstate.allAssetNames.push(filename);
-          var key = getAssetName(filename, false);
-          var assetName = getAssetName(filename, true);
+          $jsilbrowserstate.allAssetNames.push(args.filename);
+          var key = getAssetName(args.filename, false);
+          var assetName = getAssetName(args.filename, true);
           var parsedTypeName = JSIL.ParseTypeName(typeName);    
           var type = JSIL.GetTypeInternal(parsedTypeName, JSIL.GlobalNamespace, true);
           allAssets[key] = JSIL.CreateInstanceOfType(type, [assetName, result]);
         };
-        onDoneLoading(finisher); 
+        
+        args.onDoneLoading(finisher); 
       } else {
-        onError(error);
+        args.onError(error);
       }
     });
   };
@@ -487,7 +491,7 @@ function loadImageCORSHack (e, args) {
     mimeType = "image/jpeg";
   }
 
-  loadBinaryFileAsync(sourceURL, function (result, error) {
+  args.loadBytes(sourceURL, function (result, error) {
     if ((result !== null) && (!error)) {
       var objectURL = null;
       try {
@@ -501,7 +505,7 @@ function loadImageCORSHack (e, args) {
         $jsilbrowserstate.allAssetNames.push(args.filename);
         allAssets[getAssetName(args.filename)] = new HTML5ImageAsset(getAssetName(args.filename, true), e);
       };
-      
+
       JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError);
       JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher));
       e.src = objectURL;

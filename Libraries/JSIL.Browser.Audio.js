@@ -371,34 +371,34 @@ function finishLoadingSound (filename, createInstance) {
 
 function loadNullSound (audioInfo, args) {
   var finisher = finishLoadingSound.bind(
-    null, filename, function createNullSoundInstance (loop) {
+    null, args.filename, function createNullSoundInstance (loop) {
       return new JSIL.Audio.NullInstance(audioInfo, loop);
     }
   );
 
-  onDoneLoading(finisher);
+  args.onDoneLoading(finisher);
 };
 
 function loadWebkitSound (audioInfo, args) {
   var handleError = function (text) {
-    JSIL.Host.warning("Error while loading '" + filename + "': " + text);
-    return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
+    JSIL.Host.warning("Error while loading '" + args.filename + "': " + text);
+    return loadNullSound(audioInfo, args);
   };
 
-  var uri = audioInfo.selectUri(filename, data);
+  var uri = audioInfo.selectUri(args.filename, args.data);
   if (uri == null)
-    return handleError("No supported formats for '" + filename + "'.");
+    return handleError("No supported formats for '" + args.filename + "'.");
 
-  loadBinaryFileAsync(uri, function decodeWebkitSound (result, error) {
+  args.loadBytes(uri, function decodeWebkitSound (result, error) {
     if ((result !== null) && (!error)) {
       var decodeCompleteCallback = function (buffer) {        
         var finisher = finishLoadingSound.bind(
-          null, filename, function createWebKitSoundInstance (loop) {
+          null, args.filename, function createWebKitSoundInstance (loop) {
             return new JSIL.Audio.WebKitInstance(audioInfo, buffer, loop);
           }
         );
         
-        onDoneLoading(finisher);
+        args.onDoneLoading(finisher);
       };
 
       var decodeFailedCallback = function () {
@@ -420,12 +420,12 @@ function loadWebkitSound (audioInfo, args) {
 function loadStreamingSound (audioInfo, args) {
   var handleError = function (text) {
     JSIL.Host.warning(text);
-    return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadNullSound(audioInfo, args);
   };
 
-  var uri = audioInfo.selectUri(filename, data);
+  var uri = audioInfo.selectUri(args.filename, args.data);
   if (uri == null)
-    return handleError("No supported formats for '" + filename + "'.");
+    return handleError("No supported formats for '" + args.filename + "'.");
 
   var createInstance = function createStreamingSoundInstance (loop) {
     var e = audioInfo.makeAudioInstance();
@@ -440,24 +440,24 @@ function loadStreamingSound (audioInfo, args) {
   };
 
   var finisher = finishLoadingSound.bind(
-    null, filename, createInstance
+    null, args.filename, createInstance
   );
 
-  onDoneLoading(finisher);
+  args.onDoneLoading(finisher);
 };
 
 function loadBufferedHTML5Sound (audioInfo, args) {
   var handleError = function (text) {
     JSIL.Host.warning(text);
-    return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadNullSound(audioInfo, args);
   };
 
   var mimeType = [null];
-  var uri = audioInfo.selectUri(filename, data, mimeType);
+  var uri = audioInfo.selectUri(args.filename, args.data, mimeType);
   if (uri == null)
-    return handleError("No supported formats for '" + filename + "'.");
+    return handleError("No supported formats for '" + args.filename + "'.");
 
-  loadBinaryFileAsync(uri, function finishBufferingSound (result, error) {
+  args.loadBytes(uri, function finishBufferingSound (result, error) {
     if ((result !== null) && (!error)) {
       try {
         var objectUrl = JSIL.GetObjectURLForBytes(result, mimeType[0]);
@@ -478,10 +478,10 @@ function loadBufferedHTML5Sound (audioInfo, args) {
       };
 
       var finisher = finishLoadingSound.bind(
-        null, filename, createInstance
+        null, args.filename, createInstance
       );
 
-      onDoneLoading(finisher);
+      args.onDoneLoading(finisher);
     } else {
       return handleError(error);
     }
@@ -491,12 +491,12 @@ function loadBufferedHTML5Sound (audioInfo, args) {
 function loadHTML5Sound (audioInfo, args) {
   var handleError = function (text) {
     JSIL.Host.warning(text);
-    return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadNullSound(audioInfo, args);
   };
 
-  var uri = audioInfo.selectUri(filename, data);
+  var uri = audioInfo.selectUri(args.filename, args.data);
   if (uri == null)
-    return handleError("No supported formats for '" + filename + "'.");
+    return handleError("No supported formats for '" + args.filename + "'.");
 
   var createInstance = function createStreamingSoundInstance (loop) {
     var e = audioInfo.makeAudioInstance();
@@ -511,7 +511,7 @@ function loadHTML5Sound (audioInfo, args) {
   };
 
   var finisher = finishLoadingSound.bind(
-    null, filename, createInstance
+    null, args.filename, createInstance
   );
 
   onDoneLoading(finisher);
@@ -520,7 +520,7 @@ function loadHTML5Sound (audioInfo, args) {
 function loadSoundGeneric (audioInfo, args) {
   if (audioInfo.disableSound) {
     return loadNullSound(audioInfo, args);
-  } else if (data.stream) {
+  } else if (args.data.stream) {
     return loadStreamingSound(audioInfo, args);
   } else if (audioInfo.hasAudioContext) {
     return loadWebkitSound(audioInfo, args);

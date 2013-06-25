@@ -823,10 +823,12 @@ JSIL.LoaderArgs = function (filename, data, onDoneLoading, onError, state) {
 
 JSIL.LoaderArgs.prototype = Object.create(Object.prototype);
 
-JSIL.LoaderArgs.prototype.getText = function () {
+JSIL.LoaderArgs.prototype.loadText = function (uri, onComplete) {
+  loadTextAsync(uri, onComplete);
 };
 
-JSIL.LoaderArgs.prototype.getBytes = function () {
+JSIL.LoaderArgs.prototype.loadBytes = function (uri, onComplete) {
+  loadBinaryFileAsync(uri, onComplete);
 };
 
 
