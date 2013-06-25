@@ -23,7 +23,8 @@
   "ArchiveCreator": {
     "Format": "tar",
     "PackScripts": true,
-    "PackContent": true
+    "PackContent": true,
+    "DeleteArchivedFiles": false
   },
   "ProfileSettings": {
     "OverwriteExistingContent": true,

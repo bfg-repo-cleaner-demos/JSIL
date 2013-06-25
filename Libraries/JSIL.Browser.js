@@ -813,6 +813,23 @@ function finishLoading () {
   }
 };
 
+JSIL.LoaderArgs = function (filename, data, onDoneLoading, onError, state) {
+  this.filename = filename;
+  this.data = data;
+  this.onDoneLoading = onDoneLoading;
+  this.onError = onError;
+  this.state = state;
+};
+
+JSIL.LoaderArgs.prototype = Object.create(Object.prototype);
+
+JSIL.LoaderArgs.prototype.getText = function () {
+};
+
+JSIL.LoaderArgs.prototype.getBytes = function () {
+};
+
+
 function pollAssetQueue () {      
   var state = this;
 
@@ -888,7 +905,13 @@ function pollAssetQueue () {
       } else {
         state.assetsLoading += 1;
         state.assetsLoadingNames[assetPath] = assetLoader;
-        assetLoader(assetPath, assetData, errorCallback, stepCallback, state);
+        var args = new JSIL.LoaderArgs(
+          assetPath, assetData,
+          stepCallback, errorCallback,
+          state
+        );
+
+        assetLoader(args);
       }
     } finally {
       state.loadIndex += 1;
@@ -953,12 +976,24 @@ function loadManifests (manifests, onDoneLoading) {
 
   function onStreamFile (file) {
     var manifestName = this;
-//    debugger;
+
+    if (file.filename.indexOf(".manifest.js") >= 0) {
+      JSIL.loadGlobalScriptText(
+        manifestName,
+        JSIL.StringFromByteArray(file.data),
+        function () {
+          var index = tarsInFlight.indexOf(manifestName);
+          tarsInFlight.splice(index, 1);
+
+          checkInFlight();
+        }
+      );
+    }
   };
 
   function onStreamLoad (xhr) {
     var manifestName = this;
-    debugger;
+
     checkInFlight();
   };
 
@@ -991,7 +1026,7 @@ function loadManifests (manifests, onDoneLoading) {
     var manifestFile = manifests[i];
 
     if (jsilConfig.tar) {
-      var manifestTarUri = manifestFile + ".fart.tar";
+      var manifestTarUri = manifestFile + ".tar";
 
       tarsInFlight.push(manifestFile);
       MultiFile.stream(
@@ -1006,7 +1041,7 @@ function loadManifests (manifests, onDoneLoading) {
   }
 };
 
-function loadAssets (assets, onDoneLoading) {
+function loadAssets (assets, tars, onDoneLoading) {
   var state = {
     assetBytes: 0,
     assetCount: assets.length,
@@ -1024,7 +1059,8 @@ function loadAssets (assets, onDoneLoading) {
     jsilInitialized: false,
     assetsLoadingNames: {},
     assetLoadFailures: [],
-    failedFinishes: 0
+    failedFinishes: 0,
+    tars: tars
   };
 
   for (var i = 0, l = assets.length; i < l; i++) {
@@ -1061,7 +1097,7 @@ function beginLoading () {
   if (loadingProgress)
     loadingProgress.style.display = "";
 
-  function onDoneLoadingManifests () {
+  function onDoneLoadingManifests (loadedTars) {
     var seenFilenames = {};
 
     var pushAsset = function (assetSpec) {
@@ -1089,7 +1125,7 @@ function beginLoading () {
     }
     
     JSIL.Host.logWrite("Loading files ... ");
-    loadAssets(allAssetsToLoad, browserFinishedLoadingCallback);
+    loadAssets(allAssetsToLoad, loadedTars, browserFinishedLoadingCallback);
   };
 
   JSIL.Host.logWriteLine("Loading manifests ... ");

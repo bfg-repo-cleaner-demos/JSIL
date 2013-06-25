@@ -113,8 +113,8 @@ MultiFile.prototype = {
       result = new Array(count);
     }
 
-    for (var i = 0; i < count; ++i)
-      result[i] = text.charCodeAt(i) & 0xFF;
+    for (var i = 0; i < count; i = (i + 1) | 0)
+      result[i] = text.charCodeAt((i + offset) | 0) & 0xFF;
 
     return result;
   },

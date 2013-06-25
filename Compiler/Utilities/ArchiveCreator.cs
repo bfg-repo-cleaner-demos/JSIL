@@ -19,13 +19,35 @@ namespace JSIL.Utilities {
             Available = File.Exists(SevenZipPath);
         }
 
-        public static void CreateArchiveFromManifest (VariableSet variables, Configuration configuration, string manifestPath) {
+        // FIXME: 7za is such a pain about this file format that I should probably just write my own TAR packer...
+        private static bool Invoke7Z (string arguments, string workingDirectory) {
+            string stderr;
+            byte[] stdout;
+
+            var exitCode = IOUtil.Run(
+                SevenZipPath,
+                arguments,
+                null, out stderr, out stdout,
+                workingDirectory: workingDirectory
+            );
+
+            if (exitCode == 0) {
+                return true;
+            } else {
+                Console.WriteLine("failed.");
+                Console.WriteLine(Encoding.UTF8.GetString(stdout));
+                Console.WriteLine(stderr);
+                return false;
+            }
+        }
+
+        public static bool CreateArchiveFromManifest (VariableSet variables, Configuration configuration, string manifestPath) {
             var manifestDirectory = Path.GetDirectoryName(manifestPath);
             var manifestName = Path.GetFileName(manifestPath).Replace(".manifest.js", "");
 
             if (configuration.ArchiveCreator.ExcludeManifests.Contains(manifestName)) {
                 Console.WriteLine("// Skipped generating archive for '{0}'.", manifestName);
-                return;
+                return false;
             }
 
             var archiveFormat = configuration.ArchiveCreator.Format;
@@ -35,6 +57,10 @@ namespace JSIL.Utilities {
             Console.Write("// Creating '{0}'... ", Path.GetFileName(archivePath));
             if (File.Exists(archivePath))
                 File.Delete(archivePath);
+            if (File.Exists(archivePath + ".header"))
+                File.Delete(archivePath + ".header");
+            if (File.Exists(archivePath + ".footer"))
+                File.Delete(archivePath + ".footer");
 
             var filenames = new List<string>();
             using (var reader = new ContentManifestReader(File.OpenText(manifestPath))) 
@@ -52,8 +78,6 @@ namespace JSIL.Utilities {
 
             var fileListPath = archivePath + ".sources";
             using (var fileList = new StreamWriter(fileListPath, false, Encoding.UTF8)) {
-                fileList.WriteLine("\"{0}\"", manifestPath);
-
                 // HACK: 7zip gets really angry about dupes.
                 foreach (var filename in filenames.Distinct()) {
                     var relativeFilename = Program.ShortenPath(filename, manifestDirectory);
@@ -61,29 +85,54 @@ namespace JSIL.Utilities {
                 }
             }
 
-            string stderr;
-            byte[] stdout;
-
-            var exitCode = IOUtil.Run(
-                SevenZipPath,
+            if (!Invoke7Z(
                 String.Format(
-                    "a -t{0} -r -i@\"{1}\" \"{2}\"",
+                    "a -t{0} \"{1}.header\" \"{2}\"",
+                    archiveFormat,
+                    archivePath,
+                    manifestPath
+                ),
+                workingDirectory: manifestDirectory
+            ))
+                return false;
+
+            if (Invoke7Z(
+                String.Format(
+                    "a -t{0} -i@\"{1}\" \"{2}.footer\"",
                     archiveFormat,
                     fileListPath,
                     archivePath
                 ),
-                null, out stderr, out stdout,
                 workingDirectory: manifestDirectory
-            );
-
-            if (exitCode == 0) {
+            )) {
                 File.Delete(fileListPath);
-                Console.WriteLine("succeeded.");
-            } else {
-                Console.WriteLine("failed.");
-                Console.WriteLine(Encoding.UTF8.GetString(stdout));
-                Console.WriteLine(stderr);
+
+                // HACK: Workaround for 7-zip's utterly dumb behavior of rearranging the contents of .tar files when adding files to them
+                using (var output = File.OpenWrite(archivePath)) {
+                    var bytes = File.ReadAllBytes(archivePath + ".header");
+                    // HACK: Trim the two zero-filled records off the end.
+                    output.Write(bytes, 0, bytes.Length - 1024);
+                    bytes = File.ReadAllBytes(archivePath + ".footer");
+                    output.Write(bytes, 0, bytes.Length);
+                }
+
+                File.Delete(archivePath + ".header");
+                File.Delete(archivePath + ".footer");
+
+                if (configuration.ArchiveCreator.DeleteArchivedFiles.GetValueOrDefault(true)) {
+                    Console.Write("succeeded. Deleting sources ... ");
+
+                    foreach (var filename in filenames)
+                        File.Delete(filename);
+
+                    Console.WriteLine("ok");
+                } else {
+                    Console.WriteLine("succeeded.");
+                }
+                return true;
             }
+
+            return false;
         }
     }
 }

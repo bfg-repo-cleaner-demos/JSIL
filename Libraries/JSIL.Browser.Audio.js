@@ -369,7 +369,7 @@ function finishLoadingSound (filename, createInstance) {
   allAssets[getAssetName(filename)] = asset;
 };
 
-function loadNullSound (audioInfo, filename, data, onError, onDoneLoading) {
+function loadNullSound (audioInfo, args) {
   var finisher = finishLoadingSound.bind(
     null, filename, function createNullSoundInstance (loop) {
       return new JSIL.Audio.NullInstance(audioInfo, loop);
@@ -379,7 +379,7 @@ function loadNullSound (audioInfo, filename, data, onError, onDoneLoading) {
   onDoneLoading(finisher);
 };
 
-function loadWebkitSound (audioInfo, filename, data, onError, onDoneLoading) {
+function loadWebkitSound (audioInfo, args) {
   var handleError = function (text) {
     JSIL.Host.warning("Error while loading '" + filename + "': " + text);
     return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
@@ -417,7 +417,7 @@ function loadWebkitSound (audioInfo, filename, data, onError, onDoneLoading) {
   });
 };
 
-function loadStreamingSound (audioInfo, filename, data, onError, onDoneLoading) {
+function loadStreamingSound (audioInfo, args) {
   var handleError = function (text) {
     JSIL.Host.warning(text);
     return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
@@ -446,7 +446,7 @@ function loadStreamingSound (audioInfo, filename, data, onError, onDoneLoading) 
   onDoneLoading(finisher);
 };
 
-function loadBufferedHTML5Sound (audioInfo, filename, data, onError, onDoneLoading) {
+function loadBufferedHTML5Sound (audioInfo, args) {
   var handleError = function (text) {
     JSIL.Host.warning(text);
     return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
@@ -488,7 +488,7 @@ function loadBufferedHTML5Sound (audioInfo, filename, data, onError, onDoneLoadi
   });
 }
 
-function loadHTML5Sound (audioInfo, filename, data, onError, onDoneLoading) {
+function loadHTML5Sound (audioInfo, args) {
   var handleError = function (text) {
     JSIL.Host.warning(text);
     return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
@@ -517,17 +517,17 @@ function loadHTML5Sound (audioInfo, filename, data, onError, onDoneLoading) {
   onDoneLoading(finisher);
 }
 
-function loadSoundGeneric (audioInfo, filename, data, onError, onDoneLoading) {
+function loadSoundGeneric (audioInfo, args) {
   if (audioInfo.disableSound) {
-    return loadNullSound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadNullSound(audioInfo, args);
   } else if (data.stream) {
-    return loadStreamingSound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadStreamingSound(audioInfo, args);
   } else if (audioInfo.hasAudioContext) {
-    return loadWebkitSound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadWebkitSound(audioInfo, args);
   } else if (audioInfo.hasObjectURL && (audioInfo.hasBlobBuilder || audioInfo.hasBlobCtor)) {
-    return loadBufferedHTML5Sound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadBufferedHTML5Sound(audioInfo, args);
   } else {
-    return loadHTML5Sound(audioInfo, filename, data, onError, onDoneLoading);
+    return loadHTML5Sound(audioInfo, args);
   }
 };
 

@@ -37,6 +37,7 @@ namespace JSIL.Compiler {
             public string Format;
             public bool? PackScripts;
             public bool? PackContent;
+            public bool? DeleteArchivedFiles;
 
             public readonly List<string> ExcludeManifests = new List<string>(); 
 
@@ -49,6 +50,9 @@ namespace JSIL.Compiler {
 
                 if (PackContent.HasValue)
                     result.PackContent = PackContent;
+
+                if (DeleteArchivedFiles.HasValue)
+                    result.DeleteArchivedFiles = DeleteArchivedFiles;
 
                 result.ExcludeManifests.AddRange(ExcludeManifests);
             }

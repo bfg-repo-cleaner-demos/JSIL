@@ -6,5 +6,8 @@
     "UsePNGQuant": true,
     "FileSettings": {
     }
+  },
+  "ArchiveCreator": {
+    "DeleteArchivedFiles": false
   }
 }

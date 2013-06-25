@@ -1,8 +1,4 @@
-JSIL.loadGlobalScript = function (uri, onComplete) {
-  var anchor = document.createElement("a");
-  anchor.href = uri;
-  var absoluteUri = anchor.href;
-
+JSIL.loadGlobalScriptCore = function (init, onComplete) {
   var done = false;
 
   var body = document.getElementsByTagName("body")[0];
@@ -31,7 +27,7 @@ JSIL.loadGlobalScript = function (uri, onComplete) {
   );
 
   scriptTag.type = "text/javascript";
-  scriptTag.src = absoluteUri;
+  var initType = init(scriptTag);
 
   try {
     body.appendChild(scriptTag);
@@ -39,6 +35,35 @@ JSIL.loadGlobalScript = function (uri, onComplete) {
     done = true;
     onComplete(null, exc);
   }
+
+  if (initType === "synchronous")
+    onComplete(scriptTag, null);
+};
+
+JSIL.loadGlobalScriptText = function (fakeUri, text, onComplete) {
+  JSIL.loadGlobalScriptCore(
+    function (scriptTag) {
+      scriptTag.setAttribute("uri", fakeUri);
+      var uriPrefix = "//# sourceURL=" + fakeUri + "\r\n";
+      scriptTag.textContent = uriPrefix + text;
+      return "synchronous";
+    },
+    onComplete
+  );
+};
+
+JSIL.loadGlobalScript = function (uri, onComplete) {
+  var anchor = document.createElement("a");
+  anchor.href = uri;
+  var absoluteUri = anchor.href;
+
+  JSIL.loadGlobalScriptCore(
+    function (scriptTag) {
+      scriptTag.src = absoluteUri;
+      return "asynchronous";
+    },
+    onComplete
+  );
 };
 
 var warnedAboutOpera = false;
@@ -290,12 +315,12 @@ function loadBinaryFileAsync (uri, onComplete) {
     else
       onComplete(null, error);
   });
-}
+};
 
-var finishLoadingScript = function (state, path, onError) {
+var finishLoadingScript = function (state, path, onError, scriptText) {
   state.pendingScriptLoads += 1;
 
-  JSIL.loadGlobalScript(path, function (result, error) {
+  var callback = function (result, error) {
     state.pendingScriptLoads -= 1;
 
     if (error) {
@@ -314,39 +339,46 @@ var finishLoadingScript = function (state, path, onError) {
 
       onError(errorText);
     }          
-  });
+  };
+
+  if (scriptText)
+    JSIL.loadGlobalScriptText(path, scriptText, callback);
+  else
+    JSIL.loadGlobalScript(path, callback);
 };
 
-var loadScriptInternal = function (uri, onError, onDoneLoading, state) {
+var loadScriptInternal = function (uri, args) {
   var absoluteUrl = getAbsoluteUrl(uri);
-
-  var finisher = function () {
-    finishLoadingScript(state, uri, onError);
-  };
 
   if (absoluteUrl.indexOf("file://") === 0) {
     // No browser properly supports XHR against file://
-    onDoneLoading(finisher);
+    args.onDoneLoading(function () {
+      finishLoadingScript(args.state, uri, args.onError, null);
+    });
   } else {
     loadTextAsync(uri, function (result, error) {
       if ((result !== null) && (!error))
-        onDoneLoading(finisher);
+        args.onDoneLoading(function () {
+          finishLoadingScript(args.state, uri, args.onError, args.result);
+        });
       else
-        onError(error);
+        args.onError(error);
     });
   }
 };
 
 var assetLoaders = {
-  "Library": function loadLibrary (filename, data, onError, onDoneLoading, state) {
-    var uri = jsilConfig.libraryRoot + filename;
-    loadScriptInternal(uri, onError, onDoneLoading, state);
+  "Library": function loadLibrary (args) {
+    var uri = jsilConfig.libraryRoot + args.filename;
+    loadScriptInternal(uri, args);
   },
-  "Script": function loadScript (filename, data, onError, onDoneLoading, state) {
-    var uri = jsilConfig.scriptRoot + filename;
-    loadScriptInternal(uri, onError, onDoneLoading, state);
+
+  "Script": function loadScript (args) {
+    var uri = jsilConfig.scriptRoot + args.filename;
+    loadScriptInternal(uri, args);
   },
-  "Image": function loadImage (filename, data, onError, onDoneLoading) {
+
+  "Image": function loadImage (args) {
     var e = document.createElement("img");
     if (jsilConfig.CORS) {
       if (hasCORSImage) {
@@ -357,7 +389,7 @@ var assetLoaders = {
           warnedAboutCORSImage = true;
         }
 
-        return loadImageCORSHack(filename, data, onError, onDoneLoading);
+        return loadImageCORSHack(e, args);
       } else {
         if (!warnedAboutCORSImage) {
           JSIL.Host.logWriteLine("WARNING: This game requires support for CORS, and your browser does not support it.");
@@ -370,16 +402,17 @@ var assetLoaders = {
     }
 
     var finisher = function () {
-      $jsilbrowserstate.allAssetNames.push(filename);
-      allAssets[getAssetName(filename)] = new HTML5ImageAsset(getAssetName(filename, true), e);
+      $jsilbrowserstate.allAssetNames.push(args.filename);
+      allAssets[getAssetName(args.filename)] = new HTML5ImageAsset(getAssetName(args.filename, true), e);
     };
 
-    JSIL.Browser.RegisterOneShotEventListener(e, "error", true, onError);
-    JSIL.Browser.RegisterOneShotEventListener(e, "load", true, onDoneLoading.bind(null, finisher));
-    e.src = jsilConfig.contentRoot + filename;
+    JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError);
+    JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher));
+    e.src = jsilConfig.contentRoot + args.filename;
   },
-  "File": function loadFile (filename, data, onError, onDoneLoading) {
-    loadBinaryFileAsync(jsilConfig.fileRoot + filename, function (result, error) {
+
+  "File": function loadFile (args) {
+    loadBinaryFileAsync(jsilConfig.fileRoot + args.filename, function (result, error) {
       if ((result !== null) && (!error)) {
         $jsilbrowserstate.allFileNames.push(filename);
         allFiles[filename.toLowerCase()] = result;
@@ -389,8 +422,9 @@ var assetLoaders = {
       }
     });
   },
-  "SoundBank": function loadSoundBank (filename, data, onError, onDoneLoading) {
-    loadTextAsync(jsilConfig.contentRoot + filename, function (result, error) {
+
+  "SoundBank": function loadSoundBank (args) {
+    loadTextAsync(jsilConfig.contentRoot + args.filename, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
           $jsilbrowserstate.allAssetNames.push(filename);
@@ -402,8 +436,9 @@ var assetLoaders = {
       }
     });
   },
-  "Resources": function loadResources (filename, data, onError, onDoneLoading) {
-    loadTextAsync(jsilConfig.scriptRoot + filename, function (result, error) {
+
+  "Resources": function loadResources (args) {
+    loadTextAsync(jsilConfig.scriptRoot + args.filename, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
           $jsilbrowserstate.allAssetNames.push(filename);
@@ -418,7 +453,7 @@ var assetLoaders = {
 };
 
 function $makeXNBAssetLoader (key, typeName) {
-  assetLoaders[key] = function (filename, data, onError, onDoneLoading) {
+  assetLoaders[key] = function (args) {
     loadBinaryFileAsync(jsilConfig.contentRoot + filename, function (result, error) {
       if ((result !== null) && (!error)) {
         var finisher = function () {
@@ -437,8 +472,8 @@ function $makeXNBAssetLoader (key, typeName) {
   };
 };
 
-function loadImageCORSHack (filename, data, onError, onDoneLoading) {
-  var sourceURL = jsilConfig.contentRoot + filename;
+function loadImageCORSHack (e, args) {
+  var sourceURL = jsilConfig.contentRoot + args.filename;
 
   // FIXME: Pass mime type through from original XHR somehow?
   var mimeType = "application/octet-stream";
@@ -462,16 +497,16 @@ function loadImageCORSHack (filename, data, onError, onDoneLoading) {
         return;
       }
 
-      var e = document.createElement("img");
       var finisher = function () {
-        $jsilbrowserstate.allAssetNames.push(filename);
-        allAssets[getAssetName(filename)] = new HTML5ImageAsset(getAssetName(filename, true), e);
+        $jsilbrowserstate.allAssetNames.push(args.filename);
+        allAssets[getAssetName(args.filename)] = new HTML5ImageAsset(getAssetName(args.filename, true), e);
       };
-      JSIL.Browser.RegisterOneShotEventListener(e, "error", true, onError);
-      JSIL.Browser.RegisterOneShotEventListener(e, "load", true, onDoneLoading.bind(null, finisher));
+      
+      JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError);
+      JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher));
       e.src = objectURL;
     } else {
-      onError(error);
+      args.onError(error);
     }
   });
 };
