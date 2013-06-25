@@ -56,6 +56,7 @@ MultiFile.prototype = {
   onerror : null,
   onload : null,
   onstream : null,
+  pendingLongLink : null,
   
   load : function(url) {
     var xhr = new XMLHttpRequest();
@@ -105,32 +106,32 @@ MultiFile.prototype = {
     this.files = [];
     this.processTarChunks(text, 0);
   },
-  unpackBytes: function (text, offset, count) {
-    var result;
-    if (typeof (window.Uint8Array) !== "undefined") {
-      result = new Uint8Array(count);
-    } else {
-      result = new Array(count);
-    }
-
-    for (var i = 0; i < count; i = (i + 1) | 0)
-      result[i] = text.charCodeAt((i + offset) | 0) & 0xFF;
-
-    return result;
-  },
   processTarChunks : function (responseText, offset) {
     while (responseText.length >= offset + 512) {
       var header = this.files.length == 0 ? null : this.files[this.files.length-1];
-      if (header && header.data == null) {
+
+      if (header && (header.source === null)) {
         if (offset + header.length <= responseText.length) {
-          header.data = this.unpackBytes(responseText, offset, header.length);
+          header.source = responseText;
+          header.sourceOffset = offset;
+
+          if (header.fileType === "L") {
+            this.pendingLongLink = header.getText();
+
+            // The name in the longlink always has a trailing null
+            var firstNull = this.pendingLongLink.indexOf(String.fromCharCode(0));
+            if (firstNull)
+              this.pendingLongLink = this.pendingLongLink.substring(0, firstNull);
+          } else {
+            if (this.onstream) 
+              this.onstream(header);
+          }
 
           offset += 512 * Math.ceil(header.length / 512);
-          if (this.onstream) 
-            this.onstream(header);
         } else { // not loaded yet
           break;
         }
+
       } else {
         var header = this.parseTarHeader(responseText, offset);
         if (header.length > 0 || header.filename != '') {
@@ -142,21 +143,11 @@ MultiFile.prototype = {
         }
       }
     }
+
     return offset;
   },
   parseTarHeader : function(text, offset) {
-    var i = offset || 0;
-    var h = {};
-    h.filename = text.substring(i, i+=100).split("\0", 1)[0];
-    h.mode = text.substring(i, i+=8).split("\0", 1)[0];
-    h.uid = text.substring(i, i+=8).split("\0", 1)[0];
-    h.gid = text.substring(i, i+=8).split("\0", 1)[0];
-    h.length = this.parseTarNumber(text.substring(i, i+=12));
-    h.lastModified = text.substring(i, i+=12).split("\0", 1)[0];
-    h.checkSum = text.substring(i, i+=8).split("\0", 1)[0];
-    h.fileType = text.substring(i, i+=1).split("\0", 1)[0];
-    h.linkName = text.substring(i, i+=100).split("\0", 1)[0];
-    return h;
+    return new TarFileEntry(this, text, offset);
   },
   parseTarNumber : function(text) {
     if (text.charCodeAt(0) & 0x80 == 1) {
@@ -173,3 +164,55 @@ MultiFile.prototype = {
   },
 }
 
+TarFileEntry = function (tarFile, text, offset) {
+  this.tarFile = tarFile;
+
+  var i = offset || 0;
+
+  this.filename = text.substring(i, i+=100).split("\0", 1)[0];
+  this.mode = text.substring(i, i+=8).split("\0", 1)[0];
+  this.uid = text.substring(i, i+=8).split("\0", 1)[0];
+  this.gid = text.substring(i, i+=8).split("\0", 1)[0];
+  this.length = tarFile.parseTarNumber(text.substring(i, i+=12));
+  this.lastModified = text.substring(i, i+=12).split("\0", 1)[0];
+  this.checkSum = text.substring(i, i+=8).split("\0", 1)[0];
+  this.fileType = text.substring(i, i+=1).split("\0", 1)[0];
+  this.linkName = text.substring(i, i+=100).split("\0", 1)[0];
+
+  this.sourceOffset = null;
+  this.source = null;
+
+  if (tarFile.pendingLongLink) {
+    if (tarFile.pendingLongLink.indexOf(this.filename) !== 0)
+      throw new Error("Invalid long tar filename");
+
+    this.filename = tarFile.pendingLongLink;
+    tarFile.pendingLongLink = null;
+  }
+};
+
+TarFileEntry.prototype = Object.create(Object.prototype);
+
+TarFileEntry.prototype.getBytes = function () {
+  var result;
+  if (typeof (window.Uint8Array) !== "undefined") {
+    result = new Uint8Array(this.length);
+  } else {
+    result = new Array(this.length);
+  }
+
+  var offset = this.sourceOffset | 0;
+
+  for (var i = 0, l = this.length | 0; i < l; i = (i + 1) | 0)
+    result[i] = text.charCodeAt((i + offset) | 0) & 0xFF;
+
+  return result;
+};
+
+TarFileEntry.prototype.getText = function () {
+  return this.source.substring(this.sourceOffset, this.sourceOffset + this.length)
+};
+
+TarFileEntry.prototype.toString = function () {
+  return "'" + this.filename + "' (" + this.length + " byte(s))";
+};

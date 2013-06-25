@@ -815,22 +815,40 @@ function finishLoading () {
 };
 
 
-JSIL.LoaderArgs = function (filename, data, onDoneLoading, onError, state) {
-  this.filename = filename;
-  this.data = data;
+JSIL.LoaderArgs = function (assetSpec, onDoneLoading, onError, state) {
+  this.filename = assetSpec.path;
+  this.type = assetSpec.type;
+  this.data = assetSpec.data;
   this.onDoneLoading = onDoneLoading;
   this.onError = onError;
   this.state = state;
+  this.tarFile = assetSpec.tarFile;
 };
 
 JSIL.LoaderArgs.prototype = Object.create(Object.prototype);
 
 JSIL.LoaderArgs.prototype.loadText = function (uri, onComplete) {
-  loadTextAsync(uri, onComplete);
+  if (this.tarFile) {
+    this.tarFile.getFile(this.filename, function (result, error) {
+      if (result)
+        onComplete(result.getText(), error);
+      else
+        onComplete(null, error);
+    });
+  } else
+    loadTextAsync(uri, onComplete);
 };
 
 JSIL.LoaderArgs.prototype.loadBytes = function (uri, onComplete) {
-  loadBinaryFileAsync(uri, onComplete);
+  if (this.tarFile) {
+    this.tarFile.getFile(this.filename, function (result, error) {
+      if (result)
+        onComplete(result.getBytes(), error);
+      else
+        onComplete(null, error);
+    });
+  } else
+    loadBinaryFileAsync(uri, onComplete);
 };
 
 
@@ -920,8 +938,9 @@ function pollAssetQueue () {
       } else {
         state.assetsLoading += 1;
         state.assetsLoadingNames[assetPath] = assetLoader;
+
         var args = new JSIL.LoaderArgs(
-          assetPath, assetData,
+          assetSpec,
           stepCallback, errorCallback,
           state
         );
@@ -975,14 +994,43 @@ function pollAssetQueue () {
   }
 };
 
-function loadManifests (manifests, onDoneLoading) {
-  var tars = Object.create(null);
+function loadManifest (manifestName, onComplete) {
+  var loadingTar = false, loadingScript = false;
 
-  var tarsInFlight = [];
-  var scriptsInFlight = [];
-  var done = false;
+  function init (tarFile) {
+    tarFile.name = manifestName;
+    tarFile.pendingFiles = [];
 
-  function directLoadScript (manifestName) {
+    tarFile.findLoadedFile = function tar_findLoadedFile (name) {
+      for (var i = 0, l = this.files.length; i < l; i++) {
+        var file = this.files[i];
+        if (!file.source)
+          continue;
+
+        if (file.filename === name)
+          return file;
+      }
+
+      return null;
+    };
+    tarFile.getFile = function tar_getFile (name, onComplete) {
+      var loadedFile = this.findLoadedFile(name);
+      if (loadedFile) {
+        onComplete(loadedFile, null);
+        return null;
+      }
+
+      var token = {
+        name: name,
+        onComplete: onComplete
+      };
+
+      this.pendingFiles.push(token);
+      return token;
+    };
+  };
+
+  function directLoadScript () {
     var manifestRealUri = manifestName + ".manifest.js";
 
     scriptsInFlight.push(manifestName);
@@ -993,56 +1041,90 @@ function loadManifests (manifests, onDoneLoading) {
   };
 
   function onStreamFile (file) {
-    var manifestName = this;
-
     if (file.filename.indexOf(".manifest.js") >= 0) {
-      JSIL.loadGlobalScriptText(
-        manifestName,
-        JSIL.StringFromByteArray(file.data),
-        function () {
-          var index = tarsInFlight.indexOf(manifestName);
-          tarsInFlight.splice(index, 1);
+      if (loadingTar) {
+        loadingTar = false;
+        var theTar = this;
 
-          checkInFlight();
-        }
-      );
+        init(theTar);
+
+        JSIL.loadGlobalScriptText(
+          manifestName,
+          file.getText(),
+          function () {
+            onComplete(theTar, null);
+          }
+        );
+      }
     }
+
+    for (var i = 0, l = this.pendingFiles.length; i < l; i++) {
+      var token = this.pendingFiles[i];
+
+      if (file.filename === token.name) {
+        this.pendingFiles.splice(i, 1);
+        token.onComplete(file, null);
+        return;
+      }
+    }
+
+    return;
   };
 
   function onStreamLoad (xhr) {
-    var manifestName = this;
+    while (this.pendingFiles.length) {
+      var token = this.pendingFiles.shift();
+      var loadedFile = this.findLoadedFile(token.name);
 
-    checkInFlight();
+      if (!loadedFile)
+        token.onComplete(null, "Failed to find file '" + token.name + "' in tar " + this.name);
+      else
+        token.onComplete(loadedFile, null);
+    }
   };
 
   function onStreamError (xhr) {
-    var manifestName = this;
-
-    var index = tarsInFlight.indexOf(manifestName);
-    tarsInFlight.splice(index, 1);
-
-    tars[getAssetName(manifestName)] = null;
-
-    directLoadScript(manifestName);
+    loadingTar = false;
+    loadingScript = true;
+    directLoadScript();
   };
 
   function onScriptLoaded (scriptTag, error) {
-    var manifestName = this;
-
-    var index = scriptsInFlight.indexOf(manifestName);
-    scriptsInFlight.splice(index, 1);
-
-    checkInFlight();
+    if (loadingScript) {
+      loadingScript = false;
+      onComplete(null, error);
+    }
   };
 
-  function checkInFlight () {
-    if ((scriptsInFlight.length === 0) && (tarsInFlight.length === 0)) {
+  if (jsilConfig.tar) {
+    var manifestTarUri = manifestName + ".tar";
 
-      if (!done) {
-        done = true;
-        onDoneLoading(tars);
-      }
-    }
+    loadingTar = true;
+    MultiFile.stream(
+      manifestTarUri, 
+      onStreamFile, 
+      onStreamLoad, 
+      onStreamError
+    );      
+  } else {
+
+    loadingScript = true;
+    directLoadScript();
+  }
+};
+
+function loadManifests (manifests, onDoneLoading) {
+  var tars = Object.create(null);
+  var manifestsLeftToLoad = 0;
+
+  function onManifestLoaded (tarFile, error) {
+    manifestsLeftToLoad -= 1;
+
+    if (tarFile)
+      tars[getAssetName(tarFile.name)] = tarFile;
+
+    if (manifestsLeftToLoad === 0)
+      onDoneLoading(tars);
   };
 
   updateProgressBar("Loading manifests", null);
@@ -1050,22 +1132,8 @@ function loadManifests (manifests, onDoneLoading) {
   for (var i = 0, l = manifests.length; i < l; i++) {
     var manifestFile = manifests[i];
 
-    if (jsilConfig.tar) {
-      var manifestTarUri = manifestFile + ".tar";
-
-      tarsInFlight.push(manifestFile);
-
-      tars[getAssetName(manifestFile)] = MultiFile.stream(
-        manifestTarUri, 
-        onStreamFile.bind(manifestFile), 
-        onStreamLoad.bind(manifestFile), 
-        onStreamError.bind(manifestFile)
-      );
-    } else {
-
-      tars[getAssetName(manifestFile)] = null;
-      directLoadScript(manifestFile);
-    }
+    manifestsLeftToLoad += 1;
+    loadManifest(manifestFile, onManifestLoaded);
   }
 };
 
