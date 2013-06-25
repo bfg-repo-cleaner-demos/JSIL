@@ -168,32 +168,23 @@ MultiFile.prototype = {
   },
 }
 
-function copyingSubstring (source, start, end) {
-  // v8 is dumb as bricks and always retains the source string forever as long as the result string lives.
-  // It does this even if the source string is dozens of megabytes, and even if it's a transient string like
-  //  xhr.responseText.
-  // And yes, this is incredibly slow.
-
-  var result = "";
-  for (var i = start; i < end; i++)
-    // Can't use source[i] here because with this level of stupidity at work, it probably produces
-    //  a single character string that aliases the source buffer...
-    result += String.fromCharCode(source.charCodeAt(i));
-
-  return result;
-};
-
 TarFileEntry = function (tarFile, text, offset) {
   this.tarFile = tarFile;
 
   var i = offset || 0;
+  
+  // v8 is dumb as bricks and always retains the source string forever as long as the result string lives.
+  // It does this even if the source string is dozens of megabytes, and even if it's a transient string like
+  //  xhr.responseText.
 
-
-  this.filename = copyingSubstring(text, i, i+= 100).split("\0", 1)[0];
+  this.filenameOffset = i;
+  this.filenameLength = null;
+  i += 100;
   i += (8 * 3);
-  this.length = tarFile.parseTarNumber(copyingSubstring(text, i, i += 12));
+  this.length = tarFile.parseTarNumber(text.substring(i, i += 12));
   i += (12 + 8);
-  this.fileType = copyingSubstring(text, i, i+= 1).split("\0", 1)[0];
+  this.fileType = text[i];
+  i += 1;
   i += 100;
 
   this.sourceOffset = null;
@@ -208,6 +199,24 @@ TarFileEntry = function (tarFile, text, offset) {
 };
 
 TarFileEntry.prototype = Object.create(Object.prototype);
+
+TarFileEntry.prototype.get_filename = function () {
+  var text = this.tarFile.tarBody;
+
+  if (this.filenameLength) {
+    return text.substring(this.filenameOffset, this.filenameOffset + this.filenameLength);
+  }
+
+  var result = text.substring(this.filenameOffset, this.filenameOffset + 100);
+  this.filenameLength = result.indexOf("\0");
+  return result.substring(0, this.filenameLength);
+};
+
+Object.defineProperty(TarFileEntry.prototype, "filename", {
+  get: TarFileEntry.prototype.get_filename,
+  configurable: false,
+  enumerable: true
+});
 
 TarFileEntry.prototype.getBytes = function () {
   var result;
@@ -228,7 +237,7 @@ TarFileEntry.prototype.getBytes = function () {
 
 TarFileEntry.prototype.getText = function () {
   var text = this.tarFile.tarBody;
-  return copyingSubstring(text, this.sourceOffset, this.sourceOffset + this.length);
+  return text.substring(this.sourceOffset, this.sourceOffset + this.length);
 };
 
 TarFileEntry.prototype.toString = function () {
