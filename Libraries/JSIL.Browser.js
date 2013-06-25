@@ -813,12 +813,29 @@ function finishLoading () {
 
       cleanupTarFiles(state.tars);
 
+      while (state.argsToDispose.length) {
+        var td = state.argsToDispose.shift();
+        td.dispose();
+      }
+
+      for (var i = 0; i < state.assets.length; i++)
+        state.assets[i].dispose();
+
       window.setTimeout(
         state.onDoneLoading.bind(window, allFailures), 10
       );
 
       return;
     }
+  }
+};
+
+function cleanupTarFiles (tars) {
+  for (var k in tars) {
+    var tar = tars[k];
+    tar.files.length = 0;
+
+    delete tars[k];
   }
 };
 
@@ -834,6 +851,13 @@ JSIL.LoaderArgs = function (assetSpec, onDoneLoading, onError, state) {
 };
 
 JSIL.LoaderArgs.prototype = Object.create(Object.prototype);
+
+JSIL.LoaderArgs.prototype.dispose = function () {
+  this.onDoneLoading = null;
+  this.onError = null;
+  this.state = null;
+  this.tarFile = null;
+};
 
 JSIL.LoaderArgs.prototype.resolveUrl = function (pathPrefix, pathSuffix, mimeType, onComplete) {
   if (!pathSuffix)
@@ -899,15 +923,12 @@ JSIL.AssetSpec = function (manifestEntry, manifestName, tars) {
   }
 };
 
+JSIL.AssetSpec.prototype = Object.create(Object.prototype);
 
-function cleanupTarFiles (tars) {
-  for (var k in tars) {
-    var tar = tars[k];
-    tar.files.length = 0;
-
-    delete tars[k];
-  }
+JSIL.AssetSpec.prototype.dispose = function () {
+  this.tarFile = null;
 };
+
 
 function pollAssetQueue () {      
   var state = this;
@@ -990,6 +1011,7 @@ function pollAssetQueue () {
           stepCallback, errorCallback,
           state
         );
+        state.argsToDispose.push(args);
 
         assetLoader(args);
       }
@@ -1204,7 +1226,8 @@ function loadAssets (assets, tars, onDoneLoading) {
     assetsLoadingNames: {},
     assetLoadFailures: [],
     failedFinishes: 0,
-    tars: tars
+    tars: tars,
+    argsToDispose: []
   };
 
   for (var i = 0, l = assets.length; i < l; i++) {

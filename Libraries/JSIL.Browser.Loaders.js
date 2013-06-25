@@ -5,7 +5,7 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
 
   var scriptTag = document.createElement("script");
 
-  var cluster = JSIL.Browser.RegisterOneShotEventListener(
+  var registration = JSIL.Browser.RegisterOneShotEventListener(
     scriptTag, "load", true, 
     function ScriptTag_Load (e) {
       if (done)
@@ -14,7 +14,7 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
       done = true;
       onComplete(scriptTag, null);
     }
-  ).cluster; 
+  ); 
   JSIL.Browser.RegisterOneShotEventListener(
     scriptTag, "error", true, 
     function ScriptTag_Error (e) {
@@ -24,7 +24,7 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
       done = true;
       onComplete(null, e);
     },
-    cluster
+    registration.cluster
   );
 
   scriptTag.type = "text/javascript";
@@ -37,8 +37,10 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
     onComplete(null, exc);
   }
 
-  if (initType === "synchronous")
+  if (initType === "synchronous") {
+    registration.unregister();
     onComplete(scriptTag, null);
+  }
 };
 
 JSIL.loadGlobalScriptText = function (fakeUri, text, onComplete) {
