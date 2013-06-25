@@ -43,8 +43,9 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
 JSIL.loadGlobalScriptText = function (fakeUri, text, onComplete) {
   JSIL.loadGlobalScriptCore(
     function (scriptTag) {
+      var absoluteFakeUri = getAbsoluteUrl(fakeUri);
       scriptTag.setAttribute("uri", fakeUri);
-      var uriPrefix = "//# sourceURL=" + fakeUri + "\r\n";
+      var uriPrefix = "//# sourceURL=" + absoluteFakeUri + "\r\n";
       scriptTag.textContent = uriPrefix + text;
       return "synchronous";
     },
@@ -359,7 +360,7 @@ var loadScriptInternal = function (uri, args) {
     args.loadText(uri, function (result, error) {
       if ((result !== null) && (!error))
         args.onDoneLoading(function () {
-          finishLoadingScript(args.state, uri, args.onError, args.result);
+          finishLoadingScript(args.state, uri, args.onError, result);
         });
       else
         args.onError(error);
@@ -467,7 +468,7 @@ function $makeXNBAssetLoader (key, typeName) {
           var type = JSIL.GetTypeInternal(parsedTypeName, JSIL.GlobalNamespace, true);
           allAssets[key] = JSIL.CreateInstanceOfType(type, [assetName, result]);
         };
-        
+
         args.onDoneLoading(finisher); 
       } else {
         args.onError(error);
