@@ -1713,19 +1713,33 @@ JSIL.Browser.$MakeWrappedListener = function (listener, notification) {
   };
 };
 
-JSIL.Browser.RegisterOneShotEventListener = function (element, eventName, capture, listener) {
+JSIL.Browser.RegisterOneShotEventListener = function (element, eventName, capture, listener, cluster) {
   var registered = true;
   var unregister, wrappedListener;
 
-  unregister = function () {
+  if (!cluster) {
+    cluster = {
+      registrations: []
+    };
+  }
+
+  cluster.registrations.push(function () {
     if (registered) {
       registered = false;
+
       element.removeEventListener(eventName, wrappedListener, capture);
       JSIL.Browser.OneShotEventListenerCount -= 1;
 
       wrappedListener = null;
       element = null;
     }
+  });
+
+  unregister = function () {
+    for (var i = 0; i < cluster.registrations.length; i++)
+      cluster.registrations[i]();
+
+    cluster = null;
   };
 
   wrappedListener = JSIL.Browser.$MakeWrappedListener(listener, unregister);
@@ -1735,6 +1749,7 @@ JSIL.Browser.RegisterOneShotEventListener = function (element, eventName, captur
   element.addEventListener(eventName, wrappedListener, capture);
 
   return {
+    cluster: cluster,
     eventName: eventName,
     unregister: unregister
   }

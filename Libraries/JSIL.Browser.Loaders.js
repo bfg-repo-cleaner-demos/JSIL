@@ -5,7 +5,7 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
 
   var scriptTag = document.createElement("script");
 
-  JSIL.Browser.RegisterOneShotEventListener(
+  var cluster = JSIL.Browser.RegisterOneShotEventListener(
     scriptTag, "load", true, 
     function ScriptTag_Load (e) {
       if (done)
@@ -14,7 +14,7 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
       done = true;
       onComplete(scriptTag, null);
     }
-  ); 
+  ).cluster; 
   JSIL.Browser.RegisterOneShotEventListener(
     scriptTag, "error", true, 
     function ScriptTag_Error (e) {
@@ -23,7 +23,8 @@ JSIL.loadGlobalScriptCore = function (init, onComplete) {
 
       done = true;
       onComplete(null, e);
-    }
+    },
+    cluster
   );
 
   scriptTag.type = "text/javascript";
@@ -405,8 +406,8 @@ var assetLoaders = {
       allAssets[getAssetName(args.filename)] = new HTML5ImageAsset(getAssetName(args.filename, true), e);
     };
 
-    JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError);
-    JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher));
+    var cluster = JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError).cluster;
+    JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher), cluster);
 
     args.resolveUrl(
       jsilConfig.contentRoot, "", null,
@@ -528,8 +529,8 @@ function loadImageCORSHack (e, args) {
         allAssets[getAssetName(args.filename)] = new HTML5ImageAsset(getAssetName(args.filename, true), e);
       };
 
-      JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError);
-      JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher));
+      var cluster = JSIL.Browser.RegisterOneShotEventListener(e, "error", true, args.onError).cluster;
+      JSIL.Browser.RegisterOneShotEventListener(e, "load", true, args.onDoneLoading.bind(null, finisher), cluster);
       e.src = objectURL;
     } else {
       args.onError(error);
