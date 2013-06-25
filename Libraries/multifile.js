@@ -120,12 +120,7 @@ MultiFile.prototype = {
           header.sourceOffset = offset;
 
           if (header.fileType === "L") {
-            this.pendingLongLink = header.getText();
-
-            // The name in the longlink always has a trailing null
-            var firstNull = this.pendingLongLink.indexOf(String.fromCharCode(0));
-            if (firstNull)
-              this.pendingLongLink = this.pendingLongLink.substring(0, firstNull);
+            this.pendingLongLink = header;
           } else {
             if (this.onstream) 
               this.onstream(header);
@@ -190,10 +185,13 @@ TarFileEntry = function (tarFile, text, offset) {
   this.sourceOffset = null;
 
   if (tarFile.pendingLongLink) {
-    if (tarFile.pendingLongLink.indexOf(this.filename) !== 0)
+    var longLinkText = tarFile.pendingLongLink.getText();
+    if (longLinkText.indexOf(this.filename) !== 0)
       throw new Error("Invalid long tar filename");
 
-    this.filename = tarFile.pendingLongLink;
+    this.filenameOffset = tarFile.pendingLongLink.sourceOffset;
+    this.filenameLength = tarFile.pendingLongLink.length - 1;
+
     tarFile.pendingLongLink = null;
   }
 };
@@ -203,12 +201,15 @@ TarFileEntry.prototype = Object.create(Object.prototype);
 TarFileEntry.prototype.get_filename = function () {
   var text = this.tarFile.tarBody;
 
-  if (this.filenameLength) {
+  if (this.filenameLength && (this.filenameLength > 0)) {
     return text.substring(this.filenameOffset, this.filenameOffset + this.filenameLength);
   }
 
   var result = text.substring(this.filenameOffset, this.filenameOffset + 100);
   this.filenameLength = result.indexOf("\0");
+  if (this.filenameLength < 0)
+    this.filenameLength = result.length;
+
   return result.substring(0, this.filenameLength);
 };
 

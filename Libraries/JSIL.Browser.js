@@ -1121,9 +1121,12 @@ function loadManifest (manifestName, onComplete) {
       var token = this.pendingFiles.shift();
       var loadedFile = this.findLoadedFile(token.name);
 
-      if (!loadedFile)
-        token.onComplete(null, "Failed to find file '" + token.name + "' in tar " + this.name);
-      else
+      if (!loadedFile) {
+        var errorText = "Failed to find file '" + token.name + "' in tar " + this.name;
+        var err = new Error(errorText);
+        token.onComplete(null, err);
+        throw err;
+      } else
         token.onComplete(loadedFile, null);
     }
   };
