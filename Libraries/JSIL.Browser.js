@@ -864,6 +864,9 @@ JSIL.LoaderArgs.prototype.resolveUrl = function (pathPrefix, pathSuffix, mimeTyp
     pathSuffix = "";
 
   if (this.tarFile) {
+    if (mimeType === null)
+      mimeType = guessMimeType(this.filename + pathSuffix);
+
     this.tarFile.getFile(this.filename + pathSuffix, function (result, error) {
       if (result) {
         var bytes = result.getBytes();
