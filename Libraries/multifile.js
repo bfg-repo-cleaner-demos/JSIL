@@ -87,7 +87,10 @@ MultiFile.prototype = {
       }
     };
     xhr.open("GET", url, true);
-    xhr.overrideMimeType("text/plain; charset=x-user-defined");
+
+    if (xhr.overrideMimeType)
+      xhr.overrideMimeType("text/plain; charset=x-user-defined");
+
     xhr.setRequestHeader("Content-Type", "text/plain");
     xhr.send(null);
   },
@@ -107,12 +110,13 @@ MultiFile.prototype = {
     this.processTarChunks(text, 0);
   },
   processTarChunks : function (responseText, offset) {
+    this.tarBody = responseText;
+
     while (responseText.length >= offset + 512) {
       var header = this.files.length == 0 ? null : this.files[this.files.length-1];
 
-      if (header && (header.source === null)) {
+      if (header && (header.sourceOffset === null)) {
         if (offset + header.length <= responseText.length) {
-          header.source = responseText;
           header.sourceOffset = offset;
 
           if (header.fileType === "L") {
@@ -170,17 +174,13 @@ TarFileEntry = function (tarFile, text, offset) {
   var i = offset || 0;
 
   this.filename = text.substring(i, i+=100).split("\0", 1)[0];
-  this.mode = text.substring(i, i+=8).split("\0", 1)[0];
-  this.uid = text.substring(i, i+=8).split("\0", 1)[0];
-  this.gid = text.substring(i, i+=8).split("\0", 1)[0];
+  i += (8 * 3);
   this.length = tarFile.parseTarNumber(text.substring(i, i+=12));
-  this.lastModified = text.substring(i, i+=12).split("\0", 1)[0];
-  this.checkSum = text.substring(i, i+=8).split("\0", 1)[0];
+  i += (12 + 8);
   this.fileType = text.substring(i, i+=1).split("\0", 1)[0];
   this.linkName = text.substring(i, i+=100).split("\0", 1)[0];
 
   this.sourceOffset = null;
-  this.source = null;
 
   if (tarFile.pendingLongLink) {
     if (tarFile.pendingLongLink.indexOf(this.filename) !== 0)
@@ -202,7 +202,7 @@ TarFileEntry.prototype.getBytes = function () {
   }
 
   var offset = this.sourceOffset | 0;
-  var text = this.source;
+  var text = this.tarFile.tarBody;
 
   for (var i = 0, l = this.length | 0; i < l; i = (i + 1) | 0)
     result[i] = text.charCodeAt((i + offset) | 0) & 0xFF;
@@ -211,7 +211,8 @@ TarFileEntry.prototype.getBytes = function () {
 };
 
 TarFileEntry.prototype.getText = function () {
-  return this.source.substring(this.sourceOffset, this.sourceOffset + this.length)
+  var text = this.tarFile.tarBody;
+  return text.substring(this.sourceOffset, this.sourceOffset + this.length);
 };
 
 TarFileEntry.prototype.toString = function () {

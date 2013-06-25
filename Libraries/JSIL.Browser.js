@@ -769,6 +769,9 @@ function finishLoading () {
     if (state.finishIndex < state.finishQueue.length) {
       try {
         var item = state.finishQueue[state.finishIndex];
+        // Essential to avoid memory leaks
+        state.finishQueue[state.finishIndex] = null;
+
         var cb = item[2];
 
         // Ensure that we initialize the JSIL runtime before constructing asset objects.
@@ -806,9 +809,14 @@ function finishLoading () {
       window.clearInterval(state.interval);
       state.interval = null;
 
+      state.finishQueue.length = 0;
+
+      cleanupTarFiles(state.tars);
+
       window.setTimeout(
         state.onDoneLoading.bind(window, allFailures), 10
       );
+
       return;
     }
   }
@@ -881,7 +889,7 @@ JSIL.AssetSpec = function (manifestEntry, manifestName, tars) {
   this.path = manifestEntry[1];
   this.data = manifestEntry[2] || null;
 
-  if (this.manifestName) {
+  if (manifestName) {
     var tarKey = getAssetName(manifestName);
     this.manifestName = tarKey;
     this.tarFile = tars[tarKey] || null;
@@ -891,6 +899,15 @@ JSIL.AssetSpec = function (manifestEntry, manifestName, tars) {
   }
 };
 
+
+function cleanupTarFiles (tars) {
+  for (var k in tars) {
+    var tar = tars[k];
+    tar.files.length = 0;
+
+    delete tars[k];
+  }
+};
 
 function pollAssetQueue () {      
   var state = this;
@@ -1033,7 +1050,7 @@ function loadManifest (manifestName, onComplete) {
     tarFile.findLoadedFile = function tar_findLoadedFile (name) {
       for (var i = 0, l = this.files.length; i < l; i++) {
         var file = this.files[i];
-        if (!file.source)
+        if (file.sourceOffset === null)
           continue;
 
         if (file.filename === name)
