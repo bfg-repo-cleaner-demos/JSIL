@@ -526,6 +526,7 @@ namespace JSIL.Compiler {
                             ignoredMethods.Add(new KeyValuePair<string, string[]>(methodName, variableNames));
 
                         var outputs = buildGroup.Profile.Translate(localVariables, translator, localConfig, filename, localConfig.UseLocalProxies.GetValueOrDefault(true));
+
                         if (localConfig.OutputDirectory == null)
                             throw new Exception("No output directory was specified!");
 
@@ -542,7 +543,7 @@ namespace JSIL.Compiler {
 
                         EmitLog(outputDir, localConfig, filename, outputs, ignoredMethods);
 
-                        buildGroup.Profile.WriteOutputs(localVariables, outputs, outputDir, Path.GetFileName(filename) + ".");
+                        buildGroup.Profile.WriteOutputs(localVariables, localConfig, outputs, outputDir, Path.GetFileName(filename) + ".");
 
                         totalFailureCount += translator.Failures.Count;
                     }

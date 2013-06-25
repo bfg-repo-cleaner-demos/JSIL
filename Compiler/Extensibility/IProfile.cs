@@ -18,7 +18,7 @@ namespace JSIL.Compiler.Extensibility {
             Configuration configuration, string assemblyPath, bool scanForProxies
         );
         void WriteOutputs (
-            VariableSet variables, TranslationResult result, string path, string manifestPrefix
+            VariableSet variables, Configuration configuration, TranslationResult result, string path, string manifestPrefix
         );
     }
 }

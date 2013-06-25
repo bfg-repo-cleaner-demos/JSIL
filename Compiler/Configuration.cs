@@ -32,10 +32,29 @@ namespace JSIL.Compiler {
             }
         }
 
+        [Serializable]
+        public sealed class ArchiveCreatorConfiguration {
+            public string Format;
+            public bool? PackScripts;
+            public bool? PackContent;
+
+            public void MergeInto (ArchiveCreatorConfiguration result) {
+                if (Format != null)
+                    result.Format = Format;
+
+                if (PackScripts.HasValue)
+                    result.PackScripts = PackScripts;
+
+                if (PackContent.HasValue)
+                    result.PackContent = PackContent;
+            }
+        }
+
         public string[] ContributingPaths = new string[0];
         public string Path;
 
         public readonly SolutionBuildConfiguration SolutionBuilder = new SolutionBuildConfiguration();
+        public readonly ArchiveCreatorConfiguration ArchiveCreator = new ArchiveCreatorConfiguration();
 
         public bool? AutoLoadConfigFiles;
         public bool? UseLocalProxies;
@@ -75,6 +94,7 @@ namespace JSIL.Compiler {
                 cc.CustomVariables[kvp.Key] = kvp.Value;
 
             SolutionBuilder.MergeInto(cc.SolutionBuilder);
+            ArchiveCreator.MergeInto(cc.ArchiveCreator);
 
             cc.ContributingPaths = cc.ContributingPaths.Concat(ContributingPaths).ToArray();
         }

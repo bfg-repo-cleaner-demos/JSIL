@@ -20,6 +20,11 @@
       "JSIL\\.Meta,"
     ]
   },
+  "ArchiveCreator": {
+    "Format": "tar",
+    "PackScripts": true,
+    "PackContent": true
+  },
   "ProfileSettings": {
     "OverwriteExistingContent": true,
     "ContentOutputDirectory": "%outputdirectory%/Content"

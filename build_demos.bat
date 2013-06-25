@@ -1,4 +1,5 @@
 @del /s/q jsil.org\demos\*.js
+@del /s/q jsil.org\demos\*.tar
 @title Building TouchThumbSticks
 bin\JSILc "Examples\ThirdParty\TouchThumbSticks\TouchThumbSticks.sln" "jsil.org\demos\TouchThumbSticks\TouchThumbSticks.jsilconfig" --platform=x86 --configuration=Debug
 @title Building Game Type

@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using JSIL.Compiler.Extensibility;
+using JSIL.SolutionBuilder;
+using JSIL.Utilities;
 
 namespace JSIL.Compiler.Profiles {
     public abstract class BaseProfile : IProfile {
@@ -24,13 +27,17 @@ namespace JSIL.Compiler.Profiles {
             return result;
         }
 
-        public virtual void WriteOutputs (VariableSet variables, TranslationResult result, string path, string manifestPrefix) {
-            Console.WriteLine(manifestPrefix + "manifest.js");
+        public virtual void WriteOutputs (VariableSet variables, Configuration configuration, TranslationResult result, string path, string manifestPrefix) {
+            var manifestPath = manifestPrefix + "manifest.js";
+            Console.WriteLine(manifestPath);
 
             foreach (var fe in result.OrderedFiles)
                 Console.WriteLine(fe.Filename);
 
             result.WriteToDirectory(path, manifestPrefix);
+
+            if (configuration.ArchiveCreator.PackScripts.GetValueOrDefault(false))
+                ArchiveCreator.CreateArchiveFromManifest(variables, configuration, Path.Combine(path, manifestPath));
         }
 
         public virtual SolutionBuilder.BuildResult ProcessBuildResult (
