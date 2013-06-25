@@ -481,20 +481,37 @@ function $makeXNBAssetLoader (key, typeName) {
   };
 };
 
+function guessMimeType (url) {
+  var lower = url.toLowerCase();
+
+  if (lower.indexOf(".png") >= 0)
+    return "image/png";
+
+  if (lower.indexOf(".gif") >= 0)
+    return "image/gif";
+
+  if (
+    (lower.indexOf(".jpg") >= 0) ||
+    (lower.indexOf(".jpeg") >= 0)
+  )
+    return "image/jpeg";
+
+  if (lower.indexOf(".mp3") >= 0)
+    return "audio/mpeg";
+
+  if (lower.indexOf(".ogg") >= 0)
+    return "audio/ogg; codecs=vorbis";
+
+  if (lower.indexOf(".wav") >= 0)
+    return "audio/wav";
+
+  return "application/octet-stream";
+};
+
 function loadImageCORSHack (e, args) {
   var sourceURL = jsilConfig.contentRoot + args.filename;
-
   // FIXME: Pass mime type through from original XHR somehow?
-  var mimeType = "application/octet-stream";
-  var sourceURLLower = sourceURL.toLowerCase();
-  if (sourceURLLower.indexOf(".png") >= 0) {
-    mimeType = "image/png";
-  } else if (
-    (sourceURLLower.indexOf(".jpg") >= 0) ||
-    (sourceURLLower.indexOf(".jpeg") >= 0)
-  ) {
-    mimeType = "image/jpeg";
-  }
+  var mimeType = guessMimeType(sourceURL);
 
   args.loadBytes(jsilConfig.contentRoot, function (result, error) {
     if ((result !== null) && (!error)) {

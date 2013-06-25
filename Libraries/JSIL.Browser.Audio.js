@@ -558,16 +558,7 @@ function initSoundLoader () {
     if (mimeType)
       return mimeType;
 
-    switch (extension) {
-      case ".mp3":
-        return "audio/mpeg";
-      case ".ogg":
-        return "audio/ogg; codecs=vorbis"
-      case ".wav":
-        return "audio/wav"
-    }
-
-    return null;
+    return guessMimeType(extension);
   }
 
   audioInfo.canPlayType = function (mimeType) {
