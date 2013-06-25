@@ -8,6 +8,20 @@ using System.Threading;
 
 namespace JSIL.Compiler.Utilities {
     public static class IOUtil {
+        public static string ShortenPath (string path, string relativeTo = null) {
+            var cwd = new Uri((relativeTo ?? Environment.CurrentDirectory) + Path.DirectorySeparatorChar);
+
+            Uri pathUri;
+            if (Uri.TryCreate(path, UriKind.Absolute, out pathUri)) {
+                var relativeUri = cwd.MakeRelativeUri(pathUri);
+                var shortened = Uri.UnescapeDataString(relativeUri.ToString()).Replace('/', Path.DirectorySeparatorChar);
+                if (shortened.Length < path.Length)
+                    return shortened;
+            }
+
+            return path;
+        }
+
         public static byte[] ReadEntireStream (Stream stream) {
             var result = new List<byte>();
             var buffer = new byte[32767];

@@ -776,11 +776,16 @@ public static class Common {
 
                 EnsureDirectoryExists(localOutputDirectory);
 
-                contentManifestPath = Path.Combine(
-                    localOutputDirectory, Path.GetFileName(contentProjectPath) + ".manifest.js"
+                var contentManifestName = Path.Combine(
+                    localOutputDirectory, Path.GetFileName(contentProjectPath)
                 );
+                contentManifestPath = contentManifestName + ".manifest.js";
+
                 var contentManifest = new ContentManifestWriter(
-                    contentManifestPath, Path.GetFileName(contentProjectPath)
+                    contentManifestPath, 
+                    IOUtil.ShortenPath(contentManifestName, 
+                        myvars.ExpandPath(configuration.OutputDirectory, false)
+                    )
                 );
 
                 Action<string, string, Dictionary<string, object>> logOutput =

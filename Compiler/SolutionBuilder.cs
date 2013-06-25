@@ -11,6 +11,7 @@ using System.Threading;
 using System.Web.Script.Serialization;
 
 #if WINDOWS
+using JSIL.Compiler.Utilities;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
@@ -241,9 +242,9 @@ namespace JSIL.SolutionBuilder {
             string configString = String.Format("{0}|{1}", buildConfiguration ?? "<default>", buildPlatform ?? "<default>");
 
             if ((buildConfiguration ?? buildPlatform) != null)
-                Console.Error.WriteLine("// Running target '{2}' of '{0}' ({1}) ...", JSIL.Compiler.Program.ShortenPath(solutionFile), configString, buildTarget);
+                Console.Error.WriteLine("// Running target '{2}' of '{0}' ({1}) ...", IOUtil.ShortenPath(solutionFile), configString, buildTarget);
             else
-                Console.Error.WriteLine("// Running target '{1}' of '{0}' ...", JSIL.Compiler.Program.ShortenPath(solutionFile), buildTarget);
+                Console.Error.WriteLine("// Running target '{1}' of '{0}' ...", IOUtil.ShortenPath(solutionFile), buildTarget);
 
             var pc = new ProjectCollection();
             var parms = new BuildParameters(pc);

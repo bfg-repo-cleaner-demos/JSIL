@@ -813,6 +813,7 @@ function finishLoading () {
   }
 };
 
+
 JSIL.LoaderArgs = function (filename, data, onDoneLoading, onError, state) {
   this.filename = filename;
   this.data = data;
@@ -829,6 +830,15 @@ JSIL.LoaderArgs.prototype.loadText = function (uri, onComplete) {
 
 JSIL.LoaderArgs.prototype.loadBytes = function (uri, onComplete) {
   loadBinaryFileAsync(uri, onComplete);
+};
+
+
+JSIL.AssetSpec = function (manifestEntry, manifestName, tars) {
+  this.type = manifestEntry[0];
+  this.path = manifestEntry[1];
+  this.data = manifestEntry[2] || null;
+  this.manifestName = manifestName;
+  this.tarFile = tars[manifestName] || null;
 };
 
 
@@ -890,9 +900,9 @@ function pollAssetQueue () {
     try {
       var assetSpec = state.assets[state.loadIndex];
     
-      var assetType = assetSpec[0];
-      var assetPath = assetSpec[1];
-      var assetData = assetSpec[2] || null;
+      var assetType = assetSpec.type;
+      var assetPath = assetSpec.path;
+      var assetData = assetSpec.data;
       var assetLoader = assetLoaders[assetType];
 
       var sizeBytes = 1;
@@ -963,6 +973,8 @@ function pollAssetQueue () {
 };
 
 function loadManifests (manifests, onDoneLoading) {
+  var tars = Object.create(null);
+
   var tarsInFlight = [];
   var scriptsInFlight = [];
 
@@ -1005,6 +1017,8 @@ function loadManifests (manifests, onDoneLoading) {
     var index = tarsInFlight.indexOf(manifestName);
     tarsInFlight.splice(index, 1);
 
+    tars[manifestName] = null;
+
     directLoadScript(manifestName);
   };
 
@@ -1019,7 +1033,7 @@ function loadManifests (manifests, onDoneLoading) {
 
   function checkInFlight () {
     if ((scriptsInFlight.length === 0) && (tarsInFlight.length === 0))
-      onDoneLoading();
+      onDoneLoading(tars);
   };
 
   updateProgressBar("Loading manifests", null);
@@ -1031,13 +1045,16 @@ function loadManifests (manifests, onDoneLoading) {
       var manifestTarUri = manifestFile + ".tar";
 
       tarsInFlight.push(manifestFile);
-      MultiFile.stream(
+
+      tars[manifestFile] = MultiFile.stream(
         manifestTarUri, 
         onStreamFile.bind(manifestFile), 
         onStreamLoad.bind(manifestFile), 
         onStreamError.bind(manifestFile)
       );
     } else {
+
+      tars[manifestFile] = null;
       directLoadScript(manifestFile);
     }
   }
@@ -1102,13 +1119,15 @@ function beginLoading () {
   function onDoneLoadingManifests (loadedTars) {
     var seenFilenames = {};
 
-    var pushAsset = function (assetSpec) {
+    var pushAsset = function (assetSpec, manifestName) {
       var filename = assetSpec[1];
       if (seenFilenames[filename])
         return;
 
       seenFilenames[filename] = true;
-      allAssetsToLoad.push(assetSpec);
+
+      var obj = new JSIL.AssetSpec(assetSpec, manifestName, loadedTars);
+      allAssetsToLoad.push(obj);
     }
 
     var allAssetsToLoad = [];
@@ -1122,7 +1141,7 @@ function beginLoading () {
         var subManifest = contentManifest[k];
 
         for (var i = 0, l = subManifest.length; i < l; i++)
-          pushAsset(subManifest[i]);
+          pushAsset(subManifest[i], k);
       }
     }
     

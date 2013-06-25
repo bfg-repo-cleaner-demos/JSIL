@@ -80,7 +80,7 @@ namespace JSIL.Utilities {
             using (var fileList = new StreamWriter(fileListPath, false, Encoding.UTF8)) {
                 // HACK: 7zip gets really angry about dupes.
                 foreach (var filename in filenames.Distinct()) {
-                    var relativeFilename = Program.ShortenPath(filename, manifestDirectory);
+                    var relativeFilename = IOUtil.ShortenPath(filename, manifestDirectory);
                     fileList.WriteLine("\"{0}\"", relativeFilename);
                 }
             }

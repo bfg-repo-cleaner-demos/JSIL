@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using System.Xml.Serialization;
 using JSIL.Compiler.Extensibility;
+using JSIL.Compiler.Utilities;
 using JSIL.Internal;
 using JSIL.Translator;
 using JSIL.Utilities;
@@ -18,20 +19,6 @@ namespace JSIL.Compiler {
     class Program {
         static TypeInfoProvider CachedTypeInfoProvider = null;
         static Configuration CachedTypeInfoProviderConfiguration = null;
-
-        public static string ShortenPath (string path, string relativeTo = null) {
-            var cwd = new Uri((relativeTo ?? Environment.CurrentDirectory) + Path.DirectorySeparatorChar);
-
-            Uri pathUri;
-            if (Uri.TryCreate(path, UriKind.Absolute, out pathUri)) {
-                var relativeUri = cwd.MakeRelativeUri(pathUri);
-                var shortened = Uri.UnescapeDataString(relativeUri.ToString()).Replace('/', Path.DirectorySeparatorChar);
-                if (shortened.Length < path.Length)
-                    return shortened;
-            }
-
-            return path;
-        }
 
         static Configuration LoadConfiguration (string filename) {
             var jss = new JavaScriptSerializer();
@@ -44,7 +31,7 @@ namespace JSIL.Compiler {
                 result.Path = Path.GetDirectoryName(Path.GetFullPath(filename));
                 result.ContributingPaths = new[] { Path.GetFullPath(filename) };
 
-                Console.Error.WriteLine("// Applied settings from '{0}'.", ShortenPath(filename));
+                Console.Error.WriteLine("// Applied settings from '{0}'.", IOUtil.ShortenPath(filename));
 
                 return result;
             } catch (Exception ex) {
@@ -427,7 +414,7 @@ namespace JSIL.Compiler {
             var translator = new AssemblyTranslator(
                 configuration, typeInfoProvider, manifest, assemblyCache, 
                 onProxyAssemblyLoaded: (name, classification) => {
-                    Console.Error.WriteLine("// Loaded proxies from '{0}'", ShortenPath(name));
+                    Console.Error.WriteLine("// Loaded proxies from '{0}'", IOUtil.ShortenPath(name));
                 }
             );
 
@@ -436,7 +423,7 @@ namespace JSIL.Compiler {
             translator.Writing += MakeProgressHandler           ("Writing JS  ");
 
             translator.AssemblyLoaded += (fn, classification) => {
-                Console.Error.WriteLine("// Loaded {0} ({1})", ShortenPath(fn), classification);
+                Console.Error.WriteLine("// Loaded {0} ({1})", IOUtil.ShortenPath(fn), classification);
             };
             translator.CouldNotLoadSymbols += (fn, ex) => {
             };
@@ -533,7 +520,7 @@ namespace JSIL.Compiler {
                         var outputDir = MapPath(localConfig.OutputDirectory, localVariables, false);
                         CopiedOutputGatherer.EnsureDirectoryExists(outputDir);
 
-                        Console.Error.WriteLine("// Saving output to '{0}'.", ShortenPath(outputDir) + Path.DirectorySeparatorChar);
+                        Console.Error.WriteLine("// Saving output to '{0}'.", IOUtil.ShortenPath(outputDir) + Path.DirectorySeparatorChar);
 
                         // Ensures that the log file contains the name of the profile that was actually used.
                         localConfig.Profile = localProfile.GetType().Name;
