@@ -881,9 +881,14 @@ JSIL.AssetSpec = function (manifestEntry, manifestName, tars) {
   this.path = manifestEntry[1];
   this.data = manifestEntry[2] || null;
 
-  var tarKey = getAssetName(manifestName);
-  this.manifestName = tarKey;
-  this.tarFile = tars[tarKey] || null;
+  if (this.manifestName) {
+    var tarKey = getAssetName(manifestName);
+    this.manifestName = tarKey;
+    this.tarFile = tars[tarKey] || null;
+  } else {
+    this.manifestName = null;
+    this.tarFile = null;
+  }
 };
 
 
@@ -1057,7 +1062,6 @@ function loadManifest (manifestName, onComplete) {
   function directLoadScript () {
     var manifestRealUri = manifestName + ".manifest.js";
 
-    scriptsInFlight.push(manifestName);
     JSIL.loadGlobalScript(
       manifestRealUri, 
       onScriptLoaded.bind(manifestName)
@@ -1234,7 +1238,7 @@ function beginLoading () {
     var allAssetsToLoad = [];
     if (typeof (window.assetsToLoad) !== "undefined") {
       for (var i = 0, l = assetsToLoad.length; i < l; i++)
-        pushAsset(assetsToLoad[i]);
+        pushAsset(assetsToLoad[i], null);
     }
 
     if (typeof (contentManifest) === "object") {
