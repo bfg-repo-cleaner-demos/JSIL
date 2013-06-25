@@ -31,10 +31,14 @@ namespace JSIL.Compiler.Utilities {
             return result.ToArray();
         }
 
-        public static int Run (string filename, string parameters, byte[] stdin, out string stderr, out byte[] stdout) {
+        public static int Run (
+            string filename, string parameters, 
+            byte[] stdin, out string stderr, out byte[] stdout,
+            string workingDirectory = null
+        ) {
             var psi = new ProcessStartInfo(filename, parameters);
 
-            psi.WorkingDirectory = Path.GetDirectoryName(filename);
+            psi.WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(filename);
             psi.UseShellExecute = false;
             psi.RedirectStandardInput = true;
             psi.RedirectStandardError = true;

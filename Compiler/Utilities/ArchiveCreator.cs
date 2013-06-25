@@ -29,15 +29,28 @@ namespace JSIL.Utilities {
             if (File.Exists(archivePath))
                 File.Delete(archivePath);
 
-            var fileListPath = archivePath + ".sources";
+            var filenames = new List<string>();
+            using (var reader = new ContentManifestReader(File.OpenText(manifestPath))) 
+            foreach (var entry in reader.ReadEntries()) {
+                var filePath = Path.Combine(manifestDirectory, entry.Path);
 
-            using (var reader = new ContentManifestReader(File.OpenText(manifestPath)))
+                // Audio files do a 1->N mapping so we have to handle that by parsing the format list from the manifest.
+                if ((entry.Properties != null) && entry.Properties.ContainsKey("formats")) {
+                    foreach (var format in (object[])entry.Properties["formats"])
+                        filenames.Add(filePath + (string)format);
+                } else {
+                    filenames.Add(filePath);
+                }
+            }
+
+            var fileListPath = archivePath + ".sources";
             using (var fileList = new StreamWriter(fileListPath, false, Encoding.UTF8)) {
                 fileList.WriteLine("\"{0}\"", manifestPath);
 
-                foreach (var entry in reader.ReadEntries()) {
-                    var filePath = Path.Combine(manifestDirectory, entry.Path);
-                    fileList.WriteLine("\"{0}\"", filePath);
+                // HACK: 7zip gets really angry about dupes.
+                foreach (var filename in filenames.Distinct()) {
+                    var relativeFilename = Program.ShortenPath(filename, manifestDirectory);
+                    fileList.WriteLine("\"{0}\"", relativeFilename);
                 }
             }
 
@@ -47,12 +60,13 @@ namespace JSIL.Utilities {
             var exitCode = IOUtil.Run(
                 SevenZipPath,
                 String.Format(
-                    "a -t{0} -i@\"{1}\" \"{2}\"",
+                    "a -t{0} -r -i@\"{1}\" \"{2}\"",
                     archiveFormat,
                     fileListPath,
                     archivePath
                 ),
-                null, out stderr, out stdout
+                null, out stderr, out stdout,
+                workingDirectory: manifestDirectory
             );
 
             if (exitCode == 0) {

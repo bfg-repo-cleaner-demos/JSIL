@@ -19,8 +19,8 @@ namespace JSIL.Compiler {
         static TypeInfoProvider CachedTypeInfoProvider = null;
         static Configuration CachedTypeInfoProviderConfiguration = null;
 
-        public static string ShortenPath (string path) {
-            var cwd = new Uri(Environment.CurrentDirectory);
+        public static string ShortenPath (string path, string relativeTo = null) {
+            var cwd = new Uri((relativeTo ?? Environment.CurrentDirectory) + Path.DirectorySeparatorChar);
 
             Uri pathUri;
             if (Uri.TryCreate(path, UriKind.Absolute, out pathUri)) {
