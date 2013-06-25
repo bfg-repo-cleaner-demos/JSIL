@@ -1145,9 +1145,7 @@ function loadManifest (manifestName, onComplete) {
 
       if (!loadedFile) {
         var errorText = "Failed to find file '" + token.name + "' in tar " + this.name;
-        var err = new Error(errorText);
-        token.onComplete(null, err);
-        throw err;
+        token.onComplete(null, errorText);
       } else
         token.onComplete(loadedFile, null);
     }
