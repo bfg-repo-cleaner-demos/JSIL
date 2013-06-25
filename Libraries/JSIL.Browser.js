@@ -805,6 +805,7 @@ function finishLoading () {
 
       window.clearInterval(state.interval);
       state.interval = null;
+
       window.setTimeout(
         state.onDoneLoading.bind(window, allFailures), 10
       );
@@ -837,8 +838,10 @@ JSIL.AssetSpec = function (manifestEntry, manifestName, tars) {
   this.type = manifestEntry[0];
   this.path = manifestEntry[1];
   this.data = manifestEntry[2] || null;
-  this.manifestName = manifestName;
-  this.tarFile = tars[manifestName] || null;
+
+  var tarKey = getAssetName(manifestName);
+  this.manifestName = tarKey;
+  this.tarFile = tars[tarKey] || null;
 };
 
 
@@ -977,6 +980,7 @@ function loadManifests (manifests, onDoneLoading) {
 
   var tarsInFlight = [];
   var scriptsInFlight = [];
+  var done = false;
 
   function directLoadScript (manifestName) {
     var manifestRealUri = manifestName + ".manifest.js";
@@ -1017,7 +1021,7 @@ function loadManifests (manifests, onDoneLoading) {
     var index = tarsInFlight.indexOf(manifestName);
     tarsInFlight.splice(index, 1);
 
-    tars[manifestName] = null;
+    tars[getAssetName(manifestName)] = null;
 
     directLoadScript(manifestName);
   };
@@ -1032,8 +1036,13 @@ function loadManifests (manifests, onDoneLoading) {
   };
 
   function checkInFlight () {
-    if ((scriptsInFlight.length === 0) && (tarsInFlight.length === 0))
-      onDoneLoading(tars);
+    if ((scriptsInFlight.length === 0) && (tarsInFlight.length === 0)) {
+
+      if (!done) {
+        done = true;
+        onDoneLoading(tars);
+      }
+    }
   };
 
   updateProgressBar("Loading manifests", null);
@@ -1046,7 +1055,7 @@ function loadManifests (manifests, onDoneLoading) {
 
       tarsInFlight.push(manifestFile);
 
-      tars[manifestFile] = MultiFile.stream(
+      tars[getAssetName(manifestFile)] = MultiFile.stream(
         manifestTarUri, 
         onStreamFile.bind(manifestFile), 
         onStreamLoad.bind(manifestFile), 
@@ -1054,7 +1063,7 @@ function loadManifests (manifests, onDoneLoading) {
       );
     } else {
 
-      tars[manifestFile] = null;
+      tars[getAssetName(manifestFile)] = null;
       directLoadScript(manifestFile);
     }
   }
@@ -1083,9 +1092,9 @@ function loadAssets (assets, tars, onDoneLoading) {
   };
 
   for (var i = 0, l = assets.length; i < l; i++) {
-    var properties = assets[i][2];
+    var properties = assets[i].data;
 
-    if (typeof (properties) !== "object") {
+    if (!properties) {
       state.assetBytes += 1;
       continue;
     }
