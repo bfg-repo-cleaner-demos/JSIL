@@ -937,6 +937,75 @@ function pollAssetQueue () {
   }
 };
 
+function loadManifests (manifests, onDoneLoading) {
+  var tarsInFlight = [];
+  var scriptsInFlight = [];
+
+  function directLoadScript (manifestName) {
+    var manifestRealUri = manifestName + ".manifest.js";
+
+    scriptsInFlight.push(manifestName);
+    JSIL.loadGlobalScript(
+      manifestRealUri, 
+      onScriptLoaded.bind(manifestName)
+    );
+  };
+
+  function onStreamFile (file) {
+    var manifestName = this;
+//    debugger;
+  };
+
+  function onStreamLoad (xhr) {
+    var manifestName = this;
+    debugger;
+    checkInFlight();
+  };
+
+  function onStreamError (xhr) {
+    var manifestName = this;
+
+    var index = tarsInFlight.indexOf(manifestName);
+    tarsInFlight.splice(index, 1);
+
+    directLoadScript(manifestName);
+  };
+
+  function onScriptLoaded (scriptTag, error) {
+    var manifestName = this;
+
+    var index = scriptsInFlight.indexOf(manifestName);
+    scriptsInFlight.splice(index, 1);
+
+    checkInFlight();
+  };
+
+  function checkInFlight () {
+    if ((scriptsInFlight.length === 0) && (tarsInFlight.length === 0))
+      onDoneLoading();
+  };
+
+  updateProgressBar("Loading manifests", null);
+
+  for (var i = 0, l = manifests.length; i < l; i++) {
+    var manifestFile = manifests[i];
+
+    if (jsilConfig.tar) {
+      var manifestTarUri = manifestFile + ".fart.tar";
+
+      tarsInFlight.push(manifestFile);
+      MultiFile.stream(
+        manifestTarUri, 
+        onStreamFile.bind(manifestFile), 
+        onStreamLoad.bind(manifestFile), 
+        onStreamError.bind(manifestFile)
+      );
+    } else {
+      directLoadScript(manifestFile);
+    }
+  }
+};
+
 function loadAssets (assets, onDoneLoading) {
   var state = {
     assetBytes: 0,
@@ -992,35 +1061,39 @@ function beginLoading () {
   if (loadingProgress)
     loadingProgress.style.display = "";
 
-  var seenFilenames = {};
+  function onDoneLoadingManifests () {
+    var seenFilenames = {};
 
-  var pushAsset = function (assetSpec) {
-    var filename = assetSpec[1];
-    if (seenFilenames[filename])
-      return;
+    var pushAsset = function (assetSpec) {
+      var filename = assetSpec[1];
+      if (seenFilenames[filename])
+        return;
 
-    seenFilenames[filename] = true;
-    allAssetsToLoad.push(assetSpec);
-  }
-
-  var allAssetsToLoad = [];
-  if (typeof (window.assetsToLoad) !== "undefined") {
-    for (var i = 0, l = assetsToLoad.length; i < l; i++)
-      pushAsset(assetsToLoad[i]);
-  }
-
-  if (typeof (contentManifest) === "object") {
-    for (var k in contentManifest) {
-      var subManifest = contentManifest[k];
-
-      for (var i = 0, l = subManifest.length; i < l; i++)
-        pushAsset(subManifest[i]);
-
+      seenFilenames[filename] = true;
+      allAssetsToLoad.push(assetSpec);
     }
-  }
-  
-  JSIL.Host.logWrite("Loading data ... ");
-  loadAssets(allAssetsToLoad, browserFinishedLoadingCallback);
+
+    var allAssetsToLoad = [];
+    if (typeof (window.assetsToLoad) !== "undefined") {
+      for (var i = 0, l = assetsToLoad.length; i < l; i++)
+        pushAsset(assetsToLoad[i]);
+    }
+
+    if (typeof (contentManifest) === "object") {
+      for (var k in contentManifest) {
+        var subManifest = contentManifest[k];
+
+        for (var i = 0, l = subManifest.length; i < l; i++)
+          pushAsset(subManifest[i]);
+      }
+    }
+    
+    JSIL.Host.logWrite("Loading files ... ");
+    loadAssets(allAssetsToLoad, browserFinishedLoadingCallback);
+  };
+
+  JSIL.Host.logWriteLine("Loading manifests ... ");
+  loadManifests($jsilloaderstate.manifestFilesToLoad, onDoneLoadingManifests);
 };
 
 function browserFinishedLoadingCallback (loadFailures) {
@@ -1221,6 +1294,77 @@ function setupStats () {
   });  
 };
 
+function initFullscreenButton (fullscreenButton) {
+  fullscreenButton.style.display = "none";
+
+  var canvas = document.getElementById("canvas");
+  var originalWidth = canvas.width;
+  var originalHeight = canvas.height;
+
+  var fullscreenElement = canvas;
+  if (jsilConfig.getFullscreenElement)
+    fullscreenElement = jsilConfig.getFullscreenElement();
+
+  var reqFullscreen = fullscreenElement.requestFullScreenWithKeys || 
+    fullscreenElement.mozRequestFullScreenWithKeys ||
+    fullscreenElement.webkitRequestFullScreenWithKeys ||
+    fullscreenElement.requestFullscreen || 
+    fullscreenElement.mozRequestFullScreen || 
+    fullscreenElement.webkitRequestFullScreen ||
+    null;
+
+  if (reqFullscreen) {
+    canGoFullscreen = true;
+
+    var goFullscreen = function () {
+      reqFullscreen.call(fullscreenElement, Element.ALLOW_KEYBOARD_INPUT);
+    };
+
+    var onFullscreenChange = function () {
+      var isFullscreen = document.fullscreen || 
+        document.fullScreen ||
+        document.mozFullScreen || 
+        document.webkitIsFullScreen ||
+        fullscreenElement.fullscreen || 
+        fullscreenElement.fullScreen ||
+        fullscreenElement.mozFullScreen || 
+        fullscreenElement.webkitIsFullScreen ||
+        false;
+
+      $jsilbrowserstate.isFullscreen = isFullscreen;
+
+      if (isFullscreen) {
+        var ow = originalWidth, oh = originalHeight;
+        if (overrideFullscreenBaseSize) {
+          ow = overrideFullscreenBaseSize[0];
+          oh = overrideFullscreenBaseSize[1];
+        }
+
+        var scaleRatio = Math.min(screen.width / ow, screen.height / oh);
+        if (integralFullscreenScaling)
+          scaleRatio = Math.floor(scaleRatio);
+
+        canvas.width = ow * scaleRatio;
+        canvas.height = oh * scaleRatio;
+      } else {
+        canvas.width = originalWidth;
+        canvas.height = originalHeight;
+      }
+
+      if (jsilConfig.onFullscreenChange)
+        jsilConfig.onFullscreenChange(isFullscreen);
+    };
+
+    document.addEventListener("fullscreenchange", onFullscreenChange, false);
+    document.addEventListener("mozfullscreenchange", onFullscreenChange, false);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange, false);
+
+    fullscreenButton.addEventListener(
+      "click", goFullscreen, true
+    );
+  }
+};
+
 function onLoad () {
   registerErrorHandler();
 
@@ -1250,74 +1394,7 @@ function onLoad () {
     statsElement.style.display = "none";
 
   if (fullscreenButton) {
-    fullscreenButton.style.display = "none";
-
-    var canvas = document.getElementById("canvas");
-    var originalWidth = canvas.width;
-    var originalHeight = canvas.height;
-
-    var fullscreenElement = canvas;
-    if (jsilConfig.getFullscreenElement)
-      fullscreenElement = jsilConfig.getFullscreenElement();
-
-    var reqFullscreen = fullscreenElement.requestFullScreenWithKeys || 
-      fullscreenElement.mozRequestFullScreenWithKeys ||
-      fullscreenElement.webkitRequestFullScreenWithKeys ||
-      fullscreenElement.requestFullscreen || 
-      fullscreenElement.mozRequestFullScreen || 
-      fullscreenElement.webkitRequestFullScreen ||
-      null;
-
-    if (reqFullscreen) {
-      canGoFullscreen = true;
-
-      var goFullscreen = function () {
-        reqFullscreen.call(fullscreenElement, Element.ALLOW_KEYBOARD_INPUT);
-      };
-
-      var onFullscreenChange = function () {
-        var isFullscreen = document.fullscreen || 
-          document.fullScreen ||
-          document.mozFullScreen || 
-          document.webkitIsFullScreen ||
-          fullscreenElement.fullscreen || 
-          fullscreenElement.fullScreen ||
-          fullscreenElement.mozFullScreen || 
-          fullscreenElement.webkitIsFullScreen ||
-          false;
-
-        $jsilbrowserstate.isFullscreen = isFullscreen;
-
-        if (isFullscreen) {
-          var ow = originalWidth, oh = originalHeight;
-          if (overrideFullscreenBaseSize) {
-            ow = overrideFullscreenBaseSize[0];
-            oh = overrideFullscreenBaseSize[1];
-          }
-
-          var scaleRatio = Math.min(screen.width / ow, screen.height / oh);
-          if (integralFullscreenScaling)
-            scaleRatio = Math.floor(scaleRatio);
-
-          canvas.width = ow * scaleRatio;
-          canvas.height = oh * scaleRatio;
-        } else {
-          canvas.width = originalWidth;
-          canvas.height = originalHeight;
-        }
-
-        if (jsilConfig.onFullscreenChange)
-          jsilConfig.onFullscreenChange(isFullscreen);
-      };
-
-      document.addEventListener("fullscreenchange", onFullscreenChange, false);
-      document.addEventListener("mozfullscreenchange", onFullscreenChange, false);
-      document.addEventListener("webkitfullscreenchange", onFullscreenChange, false);
-
-      fullscreenButton.addEventListener(
-        "click", goFullscreen, true
-      );
-    }
+    initFullscreenButton(fullscreenButton);
   };
   
   if (loadButton && !jsilConfig.autoPlay) {

@@ -52,16 +52,19 @@ function getAbsoluteUrl (localUrl) {
   return temp.href;
 };
 
-function doXHR (uri, asBinary, onComplete) {
-  var req = null, isXDR = false;
-
-  var needCORS = jsilConfig.CORS;
-  var urlPrefix = window.location.protocol + "//" + window.location.host + "/";
+function needCORSForUri (uri) {
+  var result = jsilConfig.CORS;
 
   var absoluteUrl = getAbsoluteUrl(uri);
+  var urlPrefix = window.location.protocol + "//" + window.location.host + "/";
   var sameHost = (absoluteUrl.indexOf(urlPrefix) >= 0);
 
-  needCORS = needCORS && !sameHost;
+  return result && !sameHost;
+};
+
+function doXHR (uri, asBinary, onComplete) {
+  var req = null, isXDR = false;
+  var needCORS = needCORSForUri(uri);
 
   if (location.protocol === "file:") {
     var errorText = "Loading assets from file:// is not possible in modern web browsers. You must host your application/game on a web server.";

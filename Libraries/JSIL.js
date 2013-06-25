@@ -12,7 +12,8 @@ contentManifest["JSIL"] = [];
 
 var $jsilloaderstate = {
   environment: null,
-  loadFailures: []
+  loadFailures: [],
+  manifestFilesToLoad: []
 };
 
 (function loadJSIL (config) {
@@ -81,6 +82,12 @@ var $jsilloaderstate = {
     );
   };
 
+  Environment_Browser.prototype.loadManifest = function (uri) {
+    // Defer loading of the manifest so that the browser loaders can do it.
+    // This enables us to read manifests from TAR archives if available.
+    $jsilloaderstate.manifestFilesToLoad.push(uri);
+  };
+
   Environment_Browser.prototype.loadEnvironmentScripts = function () {
     var libraryRoot = this.config.libraryRoot;
 
@@ -88,6 +95,9 @@ var $jsilloaderstate = {
     this.loadScript(libraryRoot + "JSIL.Browser.Audio.js");
     this.loadScript(libraryRoot + "JSIL.Browser.Loaders.js");
     this.loadScript(libraryRoot + "JSIL.Browser.Touch.js");
+
+    if (this.config.tar)
+      this.loadScript(libraryRoot + "multifile.js");
   };
 
 
@@ -107,6 +117,10 @@ var $jsilloaderstate = {
 
   Environment_SpidermonkeyShell.prototype.loadScript = function (uri) {
     load(uri);
+  };
+
+  Environment_SpidermonkeyShell.prototype.loadManifest = function (uri) {
+    this.loadScript(uri + ".manifest.js");
   };
 
   Environment_SpidermonkeyShell.prototype.loadEnvironmentScripts = function () {
@@ -209,7 +223,7 @@ var $jsilloaderstate = {
   var manifests = config.manifests || [];
 
   for (var i = 0, l = manifests.length; i < l; i++)
-    environment.loadScript(manifestRoot + manifests[i] + ".manifest.js");
+    environment.loadManifest(manifestRoot + manifests[i]);
 
   if (config.winForms) {
     contentManifest["JSIL"].push(["Library", "System.Drawing.js"]);

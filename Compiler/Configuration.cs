@@ -38,6 +38,8 @@ namespace JSIL.Compiler {
             public bool? PackScripts;
             public bool? PackContent;
 
+            public readonly List<string> ExcludeManifests = new List<string>(); 
+
             public void MergeInto (ArchiveCreatorConfiguration result) {
                 if (Format != null)
                     result.Format = Format;
@@ -47,6 +49,8 @@ namespace JSIL.Compiler {
 
                 if (PackContent.HasValue)
                     result.PackContent = PackContent;
+
+                result.ExcludeManifests.AddRange(ExcludeManifests);
             }
         }
 

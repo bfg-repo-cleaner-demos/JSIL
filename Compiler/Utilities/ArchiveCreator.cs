@@ -21,8 +21,15 @@ namespace JSIL.Utilities {
 
         public static void CreateArchiveFromManifest (VariableSet variables, Configuration configuration, string manifestPath) {
             var manifestDirectory = Path.GetDirectoryName(manifestPath);
+            var manifestName = Path.GetFileName(manifestPath).Replace(".manifest.js", "");
+
+            if (configuration.ArchiveCreator.ExcludeManifests.Contains(manifestName)) {
+                Console.WriteLine("// Skipped generating archive for '{0}'.", manifestName);
+                return;
+            }
+
             var archiveFormat = configuration.ArchiveCreator.Format;
-            var archiveName = String.Format("{0}.{1}", Path.GetFileName(manifestPath).Replace(".manifest.js", ""), archiveFormat);
+            var archiveName = String.Format("{0}.{1}", manifestName, archiveFormat);
             var archivePath = Path.Combine(manifestDirectory, archiveName);
 
             Console.Write("// Creating '{0}'... ", Path.GetFileName(archivePath));

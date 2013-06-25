@@ -20,5 +20,12 @@
       "Textures\\Panels\\outro*.png": "ForceJPEG",
       "Textures\\sellScreen.png": "ForceJPEG"
     }
+  },
+  "ArchiveCreator": {
+    "ExcludeManifests": [
+      "EasyStorage.dll",
+      "Lumberjack.XmlSerializers.dll",
+      "Proxies.dll"
+    ]
   }
 }
