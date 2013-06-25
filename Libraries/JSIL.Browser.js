@@ -934,7 +934,22 @@ function pollAssetQueue () {
   var state = this;
 
   var w = 0;
-  updateProgressBar("Downloading: ", "kb", state.bytesLoaded / 1024, state.assetBytes / 1024);
+  var actualBytesLoaded = state.bytesLoaded;
+  for (var k in state.tars) {
+    var tarFile = state.tars[k];
+    var tarBody = tarFile.tarBody;
+    if (!tarBody)
+      continue;
+    var tarBytesLoaded = tarBody.length;
+    actualBytesLoaded += tarBytesLoaded;
+  }
+
+  var actualTotalBytes = state.assetBytes;
+
+  if (actualBytesLoaded > actualTotalBytes)
+    actualBytesLoaded = actualTotalBytes;
+
+  updateProgressBar("Downloading: ", "kb", actualBytesLoaded / 1024, actualTotalBytes / 1024);
 
   var makeStepCallback = function (state, type, sizeBytes, i, name) {
     return function (finish) {
@@ -993,9 +1008,12 @@ function pollAssetQueue () {
       var assetData = assetSpec.data;
       var assetLoader = assetLoaders[assetType];
 
-      var sizeBytes = 1;
-      if (assetData !== null)
-        sizeBytes = assetData.sizeBytes || 1;
+      var sizeBytes = 0;
+      if (!assetSpec.tarFile) {
+        sizeBytes = 1;
+        if (assetData !== null)
+          sizeBytes = assetData.sizeBytes || 1;
+      }
 
       var stepCallback = makeStepCallback(state, assetType, sizeBytes, state.loadIndex, assetPath); 
       var errorCallback = makeErrorCallback(assetPath, assetSpec);    
