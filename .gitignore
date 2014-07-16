@@ -102,3 +102,4 @@ Corlib/*.nlp
 *.pdb
 pingme.txt
 /packages
+/Libraries/ES7
