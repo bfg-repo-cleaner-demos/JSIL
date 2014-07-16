@@ -7,3 +7,6 @@
 [submodule "Examples/ThirdParty/Tetris"]
 	path = Examples/ThirdParty/Tetris
 	url = git://github.com/ttocs7/tetris.git
+[submodule "Upstream/es7-structs"]
+	path = Upstream/es7-structs
+	url = https://github.com/kg/structs.js.git
