@@ -5357,6 +5357,10 @@ JSIL.MakeType = function (typeArgs, initializer) {
       ctorFunction = function OpenType () {
         JSIL.RuntimeError("Cannot create an instance of open generic type '" + fullName + "'");
       };
+    } else if (typeArgs.IsAbstract) {
+      ctorFunction = function OpenType () {
+        JSIL.RuntimeError("Cannot create an instance of abstract type '" + fullName + "'");
+      };
     } else {
       ctorFunction = JSIL.MakeTypeConstructor(typeObject, maxConstructorArguments);
     }
@@ -5428,6 +5432,8 @@ JSIL.MakeType = function (typeArgs, initializer) {
 
     typeObject.IsInterface = false;
     typeObject.__IsValueType__ = !isReferenceType;
+    typeObject.__IsSealed__ = Boolean(typeArgs.IsSealed);
+    typeObject.__IsAbstract__ = Boolean(typeArgs.IsAbstract);
     typeObject.__IsByRef__ = false;
 
     // Lazily initialize struct's native size and alignment properties
