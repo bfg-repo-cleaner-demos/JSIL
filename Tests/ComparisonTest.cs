@@ -12,6 +12,7 @@ using System.Threading;
 using JSIL.Internal;
 using JSIL.Translator;
 using NUnit.Framework;
+using Spidermonkey.Managed;
 using MethodInfo = System.Reflection.MethodInfo;
 
 namespace JSIL.Tests {
@@ -532,6 +533,68 @@ namespace JSIL.Tests {
             );
         }
 
+        class InProcessEvaluator : IDisposable {
+            public readonly JSRuntime Runtime;
+            public readonly JSContext Context;
+            private readonly JSRequest Request;
+            public readonly JSGlobalObject Global;
+            private readonly JSCompartmentEntry Entry;
+
+            private readonly StringBuilder StdOut = new StringBuilder();
+            private readonly StringBuilder StdErr = new StringBuilder();
+
+            public InProcessEvaluator () {
+                Runtime = new JSRuntime();
+                Context = new JSContext(Runtime);
+                Request = Context.Request();
+                Global = new JSGlobalObject(Context);
+                Entry = Context.EnterCompartment(Global);
+
+                if (!Spidermonkey.JSAPI.InitStandardClasses(Context, Global))
+                    throw new Exception("Failed to initialize standard classes");
+
+                Global.Pointer.DefineFunction(
+                    Context, "load", (Action<string>)Load
+                );
+                Global.Pointer.DefineFunction(
+                    Context, "print", (Action<object>)Print
+                );
+                Global.Pointer.DefineFunction(
+                    Context, "putstr", (Action<object>)Putstr
+                );
+            }
+
+            private void Load (string filename) {
+                var js = File.ReadAllText(filename);
+
+                JSError error;
+                Context.Evaluate(
+                    Global, js, 
+                    out error,
+                    filename: filename
+                );
+
+                if (error != null)
+                    throw error.ToException();
+            }
+
+            private void Print (object o) {
+                StdOut.AppendLine(Convert.ToString(o));
+            }
+
+            private void Putstr (object o) {
+                StdOut.Append(Convert.ToString(o));
+            }
+
+            public void Dispose () {
+                Entry.Dispose();
+                Global.Dispose();
+                Request.Dispose();
+                Context.Dispose();
+                Runtime.Dispose();
+            }
+        }
+
         public string RunJavascript (
             string[] args, out string generatedJavascript, out long elapsedTranslation, out long elapsedJs, out string stderr, out string trailingOutput,
             Func<Configuration> makeConfiguration = null,
@@ -547,60 +610,92 @@ namespace JSIL.Tests {
                 initializeTranslator
             );
 
-            using (var evaluator = EvaluatorPool.Get()) {
-                var startedJs = DateTime.UtcNow.Ticks;
-                var sentinelStart = "// Test output begins here //";
-                var sentinelEnd = "// Test output ends here //";
-                var elapsedPrefix = "// elapsed: ";
+            var startedJs = DateTime.UtcNow.Ticks;
+            var sentinelStart = "// Test output begins here //";
+            var sentinelEnd = "// Test output ends here //";
+            var elapsedPrefix = "// elapsed: ";
 
-                StartupPrologue =
-                    String.Format("contentManifest['Test'] = [['Script', {0}]]; ", Util.EscapeString(tempFilename));
-                if (evaluationConfig != null && evaluationConfig.AdditionalFilesToLoad != null){
-                    foreach (var file in evaluationConfig.AdditionalFilesToLoad)
-                    {
-                        StartupPrologue += String.Format("load({0});", Util.EscapeString(file));
-                    }
+            StartupPrologue =
+                String.Format("contentManifest['Test'] = [['Script', {0}]]; ", Util.EscapeString(tempFilename));
+            if (evaluationConfig != null && evaluationConfig.AdditionalFilesToLoad != null) {
+                foreach (var file in evaluationConfig.AdditionalFilesToLoad) {
+                    StartupPrologue += String.Format("load({0});", Util.EscapeString(file));
                 }
-                StartupPrologue += String.Format("function runMain () {{ " +
-                    "print({0}); try {{ var elapsedTime = runTestCase(Date.now); }} catch (exc) {{ reportException(exc); }} print({1}); print({2} + elapsedTime);" +
-                    "}}; shellStartup();",
-                    Util.EscapeString(sentinelStart),
-                    Util.EscapeString(sentinelEnd),
-                    Util.EscapeString(elapsedPrefix)
-                );
+            }
+            StartupPrologue += String.Format("function runMain () {{ " +
+                "print({0}); try {{ var elapsedTime = runTestCase(Date.now); }} catch (exc) {{ reportException(exc); }} print({1}); print({2} + elapsedTime);" +
+                "}}; shellStartup();",
+                Util.EscapeString(sentinelStart),
+                Util.EscapeString(sentinelEnd),
+                Util.EscapeString(elapsedPrefix)
+            );
 
-                evaluator.WriteInput(StartupPrologue);
+            bool failed = false;
+            int exitCode = 0;
+            string stdout = null;
+            stderr = null;
 
-                evaluator.Join();
+            if (true) {
+                using (var evaluator = new InProcessEvaluator()) {
+                    var context = evaluator.Context;
+                    JSError error;
 
-                long endedJs = DateTime.UtcNow.Ticks;
-                elapsedJs = endedJs - startedJs;
+                    var js = EvaluatorSetupCode + Environment.NewLine + StartupPrologue;
+                    File.WriteAllText(@"C:\Users\Katelyn\Documents\test.js", js);
 
-                if (evaluator.ExitCode != 0) {
-                    var _stdout = (evaluator.StandardOutput ?? "").Trim();
-                    var _stderr = (evaluator.StandardError ?? "").Trim();
-
-                    var exceptions = new List<JavaScriptException>();
-
-                    var exceptionMatches = ExceptionRegex.Matches(_stdout);
-                    foreach (Match match in exceptionMatches) {
-                        var errorText = match.Groups["errorText"].Value;
-                        string stackText = null;
-
-                        if (match.Groups["stack"].Success)
-                            stackText = match.Groups["stack"].Value;
-
-                        var exception = new JavaScriptException(errorText, stackText);
-                        exceptions.Add(exception);
-                    }
-
-                    throw new JavaScriptEvaluatorException(
-                        evaluator.ExitCode, _stdout, _stderr, exceptions.ToArray()
+                    context.Evaluate(
+                        evaluator.Global,
+                        js, out error,
+                        filename: "js"
                     );
+                    if (error != null)
+                        throw error.ToException();
+
+                    stdout = stderr = "";
+                    failed = true;
+
+                    long endedJs = DateTime.UtcNow.Ticks;
+                    elapsedJs = endedJs - startedJs;
+                }
+            } else {
+                using (var evaluator = EvaluatorPool.Get()) {
+                    evaluator.WriteInput(StartupPrologue);
+
+                    evaluator.Join();
+
+                    long endedJs = DateTime.UtcNow.Ticks;
+                    elapsedJs = endedJs - startedJs;
+
+                    failed = ((exitCode = evaluator.ExitCode) != 0);
+                    if (failed) {
+                        stdout = (evaluator.StandardOutput ?? "").Trim();
+                        stderr = (evaluator.StandardError ?? "").Trim();
+                    } else {
+                        stdout = evaluator.StandardOutput;
+                        stderr = evaluator.StandardError;
+                    }
+                }
+            }
+
+            if (failed) {
+                var exceptions = new List<JavaScriptException>();
+
+                var exceptionMatches = ExceptionRegex.Matches(stdout);
+                foreach (Match match in exceptionMatches) {
+                    var errorText = match.Groups["errorText"].Value;
+                    string stackText = null;
+
+                    if (match.Groups["stack"].Success)
+                        stackText = match.Groups["stack"].Value;
+
+                    var exception = new JavaScriptException(errorText, stackText);
+                    exceptions.Add(exception);
                 }
 
-                var stdout = evaluator.StandardOutput;
-
+                throw new JavaScriptEvaluatorException(
+                    exitCode, stdout, stderr, exceptions.ToArray()
+                );
+            } else {
                 if (stdout != null) {
                     var m = ElapsedRegex.Match(stdout);
                     if (m.Success) {
@@ -629,8 +724,6 @@ namespace JSIL.Tests {
                         }
                     }
                 }
-
-                stderr = evaluator.StandardError;
 
                 return stdout ?? "";
             }
