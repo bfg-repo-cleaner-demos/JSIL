@@ -12,8 +12,11 @@ using System.Threading;
 using JSIL.Internal;
 using JSIL.Translator;
 using NUnit.Framework;
-using Spidermonkey.Managed;
 using MethodInfo = System.Reflection.MethodInfo;
+
+#if INPROCESS_JS
+using Spidermonkey.Managed;
+#endif
 
 namespace JSIL.Tests {
     public class ComparisonTest : IDisposable {
@@ -533,6 +536,7 @@ namespace JSIL.Tests {
             );
         }
 
+#if INPROCESS_JS
         class InProcessEvaluator : IDisposable {
             public readonly JSRuntime Runtime;
             public readonly JSContext Context;
@@ -594,6 +598,7 @@ namespace JSIL.Tests {
                 Runtime.Dispose();
             }
         }
+#endif
 
         public string RunJavascript (
             string[] args, out string generatedJavascript, out long elapsedTranslation, out long elapsedJs, out string stderr, out string trailingOutput,
@@ -635,7 +640,8 @@ namespace JSIL.Tests {
             string stdout = null;
             stderr = null;
 
-            if (true) {
+            if (false) {
+#if INPROCESS_JS
                 using (var evaluator = new InProcessEvaluator()) {
                     var context = evaluator.Context;
                     JSError error;
@@ -657,6 +663,7 @@ namespace JSIL.Tests {
                     long endedJs = DateTime.UtcNow.Ticks;
                     elapsedJs = endedJs - startedJs;
                 }
+#endif
             } else {
                 using (var evaluator = EvaluatorPool.Get()) {
                     evaluator.WriteInput(StartupPrologue);
