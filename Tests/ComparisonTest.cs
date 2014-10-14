@@ -12,11 +12,8 @@ using System.Threading;
 using JSIL.Internal;
 using JSIL.Translator;
 using NUnit.Framework;
+using Spidermonkey;
 using MethodInfo = System.Reflection.MethodInfo;
-
-#if INPROCESS_JS
-using Spidermonkey.Managed;
-#endif
 
 namespace JSIL.Tests {
     public class ComparisonTest : IDisposable {
@@ -536,70 +533,6 @@ namespace JSIL.Tests {
             );
         }
 
-#if INPROCESS_JS
-        class InProcessEvaluator : IDisposable {
-            public readonly JSRuntime Runtime;
-            public readonly JSContext Context;
-            private readonly JSRequest Request;
-            public readonly JSGlobalObject Global;
-            private readonly JSCompartmentEntry Entry;
-
-            private readonly StringBuilder StdOut = new StringBuilder();
-            private readonly StringBuilder StdErr = new StringBuilder();
-
-            public InProcessEvaluator () {
-                Runtime = new JSRuntime();
-                Context = new JSContext(Runtime);
-                Request = Context.Request();
-                Global = new JSGlobalObject(Context);
-                Entry = Context.EnterCompartment(Global);
-
-                if (!Spidermonkey.JSAPI.InitStandardClasses(Context, Global))
-                    throw new Exception("Failed to initialize standard classes");
-
-                Global.Pointer.DefineFunction(
-                    Context, "load", (Action<string>)Load
-                );
-                Global.Pointer.DefineFunction(
-                    Context, "print", (Action<object>)Print
-                );
-                Global.Pointer.DefineFunction(
-                    Context, "putstr", (Action<object>)Putstr
-                );
-            }
-
-            private void Load (string filename) {
-                var js = File.ReadAllText(filename);
-
-                JSError error;
-                Context.Evaluate(
-                    Global, js, 
-                    out error,
-                    filename: filename
-                );
-
-                if (error != null)
-                    throw error.ToException();
-            }
-
-            private void Print (object o) {
-                StdOut.AppendLine(Convert.ToString(o));
-            }
-
-            private void Putstr (object o) {
-                StdOut.Append(Convert.ToString(o));
-            }
-
-            public void Dispose () {
-                Entry.Dispose();
-                Global.Dispose();
-                Request.Dispose();
-                Context.Dispose();
-                Runtime.Dispose();
-            }
-        }
-#endif
-
         public string RunJavascript (
             string[] args, out string generatedJavascript, out long elapsedTranslation, out long elapsedJs, out string stderr, out string trailingOutput,
             Func<Configuration> makeConfiguration = null,
@@ -640,7 +573,12 @@ namespace JSIL.Tests {
             string stdout = null;
             stderr = null;
 
+#if INPROCESS_JS
+            if (true) {
+#else
             if (false) {
+#endif
+
 #if INPROCESS_JS
                 using (var evaluator = new InProcessEvaluator()) {
                     var context = evaluator.Context;
@@ -654,11 +592,10 @@ namespace JSIL.Tests {
                         js, out error,
                         filename: "js"
                     );
-                    if (error != null)
-                        throw error.ToException();
 
-                    stdout = stderr = "";
-                    failed = true;
+                    stdout = evaluator.StdOut.ToString();
+                    stderr = evaluator.StdErr.ToString();
+                    failed = (error != null);
 
                     long endedJs = DateTime.UtcNow.Ticks;
                     elapsedJs = endedJs - startedJs;

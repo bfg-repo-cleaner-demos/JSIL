@@ -1812,6 +1812,8 @@ $jsilcore.SuppressRecursiveConstructionErrors = 0;
 
 // HACK: So we can allow a class's base class to include itself as a generic argument. :/
 $jsilcore.InFlightObjectConstructions = JSIL.CreateDictionaryObject(null);
+// HACK: Without this SpiderMonkey crashes in some cases when removing the last key.
+$jsilcore.InFlightObjectConstructions["$$$$hack_prevent_empty$$$$"] = "hack";
 
 JSIL.RegisterName = function (name, privateNamespace, isPublic, creator, initializer) {
   var privateName = JSIL.ResolveName(privateNamespace, name, true);
@@ -5403,6 +5405,7 @@ JSIL.MakeType = function (typeArgs, initializer) {
 
     JSIL.MakeCastMethods(staticClassObject, typeObject, null);
 
+    // This crashes SpiderMonkey by deleting the last key in the dict...
     delete $jsilcore.InFlightObjectConstructions[fullName];
 
     return staticClassObject;
