@@ -13,7 +13,14 @@ using JSIL.Internal;
 using JSIL.Translator;
 using NUnit.Framework;
 using Spidermonkey;
+using Spidermonkey.Managed;
 using MethodInfo = System.Reflection.MethodInfo;
+
+#if INPROCESS_JS
+using TEvaluatorPool = JSIL.Tests.InProcessEvaluatorPool;
+#else
+using TEvaluatorPool = JSIL.Tests.EvaluatorPool;
+#endif
 
 namespace JSIL.Tests {
     public class ComparisonTest : IDisposable {
@@ -53,7 +60,7 @@ namespace JSIL.Tests {
         public readonly Assembly Assembly;
         public readonly CompileResult CompileResult;
         public readonly TimeSpan CompilationElapsed;
-        public readonly EvaluatorPool EvaluatorPool;
+        public readonly TEvaluatorPool EvaluatorPool;
 
         protected bool? MainAcceptsArguments;
 
@@ -96,7 +103,7 @@ namespace JSIL.Tests {
         }
 
         public ComparisonTest (
-            EvaluatorPool pool,
+            TEvaluatorPool pool,
             string filename, string[] stubbedAssemblies = null,
             TypeInfoProvider typeInfo = null, AssemblyCache assemblyCache = null
         )
@@ -112,7 +119,7 @@ namespace JSIL.Tests {
         }
 
         public ComparisonTest (
-            EvaluatorPool pool,
+            TEvaluatorPool pool,
             IEnumerable<string> filenames, string outputPath,
             string[] stubbedAssemblies = null, TypeInfoProvider typeInfo = null,
             AssemblyCache assemblyCache = null, string compilerOptions = ""
@@ -574,52 +581,48 @@ namespace JSIL.Tests {
             stderr = null;
 
 #if INPROCESS_JS
-            if (true) {
+            var evaluator = EvaluatorPool.Get();
+            try {
+                evaluator.Enter();
+
+                var context = evaluator.Context;
+                JSError error;
+
+                var js = StartupPrologue;
+                context.Evaluate(
+                    evaluator.Global,
+                    js, out error,
+                    filename: "js"
+                );
+
+                stdout = evaluator.StdOut.ToString();
+                stderr = evaluator.StdErr.ToString();
+                failed = (error != null);
+
+                long endedJs = DateTime.UtcNow.Ticks;
+                elapsedJs = endedJs - startedJs;
+            } finally {
+                EvaluatorPool.QueueDispose(evaluator);
+            }
 #else
-            if (false) {
-#endif
+            using (var evaluator = EvaluatorPool.Get()) {
+                evaluator.WriteInput(StartupPrologue);
 
-#if INPROCESS_JS
-                using (var evaluator = new InProcessEvaluator()) {
-                    var context = evaluator.Context;
-                    JSError error;
+                evaluator.Join();
 
-                    var js = EvaluatorSetupCode + Environment.NewLine + StartupPrologue;
-                    File.WriteAllText(@"C:\Users\Katelyn\Documents\test.js", js);
+                long endedJs = DateTime.UtcNow.Ticks;
+                elapsedJs = endedJs - startedJs;
 
-                    context.Evaluate(
-                        evaluator.Global,
-                        js, out error,
-                        filename: "js"
-                    );
-
-                    stdout = evaluator.StdOut.ToString();
-                    stderr = evaluator.StdErr.ToString();
-                    failed = (error != null);
-
-                    long endedJs = DateTime.UtcNow.Ticks;
-                    elapsedJs = endedJs - startedJs;
-                }
-#endif
-            } else {
-                using (var evaluator = EvaluatorPool.Get()) {
-                    evaluator.WriteInput(StartupPrologue);
-
-                    evaluator.Join();
-
-                    long endedJs = DateTime.UtcNow.Ticks;
-                    elapsedJs = endedJs - startedJs;
-
-                    failed = ((exitCode = evaluator.ExitCode) != 0);
-                    if (failed) {
-                        stdout = (evaluator.StandardOutput ?? "").Trim();
-                        stderr = (evaluator.StandardError ?? "").Trim();
-                    } else {
-                        stdout = evaluator.StandardOutput;
-                        stderr = evaluator.StandardError;
-                    }
+                failed = ((exitCode = evaluator.ExitCode) != 0);
+                if (failed) {
+                    stdout = (evaluator.StandardOutput ?? "").Trim();
+                    stderr = (evaluator.StandardError ?? "").Trim();
+                } else {
+                    stdout = evaluator.StandardOutput;
+                    stderr = evaluator.StandardError;
                 }
             }
+#endif
 
             if (failed) {
                 var exceptions = new List<JavaScriptException>();
@@ -709,10 +712,10 @@ namespace JSIL.Tests {
                 signals[0].Set();
             }
 
-            ThreadPool.QueueUserWorkItem((_) => {
+            WaitCallback jsWorkItem = (_) => {
                 try {
                     outputs[1] = RunJavascript(
-                        args, out generatedJs[0], out elapsed[1], out elapsed[2], 
+                        args, out generatedJs[0], out elapsed[1], out elapsed[2],
                         makeConfiguration: makeConfiguration,
                         evaluationConfig: evaluationConfig,
                         onTranslationFailure: onTranslationFailure,
@@ -722,10 +725,14 @@ namespace JSIL.Tests {
                     errors[1] = ex;
                 }
                 signals[1].Set();
-            });
+            };
 
-            signals[0].Wait();
-            signals[1].Wait();
+            ThreadPool.QueueUserWorkItem(jsWorkItem);
+
+            if (!signals[0].Wait(5000))
+                throw new Exception("C# timed out");
+            if (!signals[1].Wait(5000))
+                throw new Exception("JS timed out");
 
             const int truncateThreshold = 4096;
 

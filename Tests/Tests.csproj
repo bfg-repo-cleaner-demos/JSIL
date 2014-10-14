@@ -66,10 +66,6 @@
     <Reference Include="nunit.framework">
       <HintPath>..\Upstream\nunit.framework.dll</HintPath>
     </Reference>
-    <Reference Include="SpidermonkeySharp, Version=0.0.0.0, Culture=neutral, processorArchitecture=x86">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\Upstream\SMS\SpidermonkeySharp.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="Microsoft.CSharp" />
@@ -645,6 +641,10 @@
     <ProjectReference Include="..\Upstream\ILSpy\Mono.Cecil\Mono.Cecil.csproj">
       <Project>{D68133BD-1E63-496E-9EDE-4FBDBF77B486}</Project>
       <Name>Mono.Cecil</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Upstream\SpidermonkeySharp\SpidermonkeySharp.csproj">
+      <Project>{EC8F6B8E-A60B-4A40-8AB5-C8D5A8185CD1}</Project>
+      <Name>SpidermonkeySharp</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

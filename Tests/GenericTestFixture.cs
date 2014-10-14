@@ -8,15 +8,23 @@ using JSIL.Internal;
 using JSIL.Translator;
 using Microsoft.Win32;
 using NUnit.Framework;
+using Spidermonkey.Managed;
 
 namespace JSIL.Tests {
     public class GenericTestFixture : IDisposable {
         protected TypeInfoProvider DefaultTypeInfoProvider;
 
+#if INPROCESS_JS
+        public InProcessEvaluatorPool EvaluatorPool {
+            get;
+            private set;
+        }
+#else
         public EvaluatorPool EvaluatorPool {
             get;
             private set;
         }
+#endif
 
         protected virtual bool UseDebugJSShell {
             get {
@@ -36,6 +44,18 @@ namespace JSIL.Tests {
 
         [TestFixtureSetUp]
         public void FixtureSetUp () {
+#if INPROCESS_JS
+            EvaluatorPool = new InProcessEvaluatorPool(
+                (e) => {
+                    JSError error;
+                    e.Context.Evaluate(e.Global, ComparisonTest.EvaluatorSetupCode, out error);
+                    if (error != null)
+                        throw error.ToException();
+
+                    e.Leave();
+                }
+            );
+#else
             EvaluatorPool = new EvaluatorPool(
                 UseDebugJSShell 
                     ? ComparisonTest.DebugJSShellPath 
@@ -45,6 +65,7 @@ namespace JSIL.Tests {
                     e.WriteInput(ComparisonTest.EvaluatorSetupCode),
                 SetupEvaluatorEnvironment()
             );
+#endif
         }
 
         [TestFixtureTearDown]

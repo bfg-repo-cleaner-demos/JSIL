@@ -10,3 +10,6 @@
 [submodule "Upstream/structs.js"]
 	path = Upstream/structs.js
 	url = https://github.com/dherman/structs.js.git
+[submodule "Upstream/SpidermonkeySharp"]
+	path = Upstream/SpidermonkeySharp
+	url = https://github.com/kg/SpidermonkeySharp
