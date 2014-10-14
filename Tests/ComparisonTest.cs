@@ -90,7 +90,7 @@ namespace JSIL.Tests {
     @"var jsilConfig = {{
         libraryRoot: {1},
         environment: 'spidermonkey_shell'
-    }}; load({0});",
+    }}; load({0}); shellStartup(false)",
              Util.EscapeString(LoaderJSPath),
              Util.EscapeString(librarySourceFolder)
            );
@@ -561,7 +561,7 @@ namespace JSIL.Tests {
             var elapsedPrefix = "// elapsed: ";
 
             StartupPrologue =
-                String.Format("contentManifest['Test'] = [['Script', {0}]]; ", Util.EscapeString(tempFilename));
+                String.Format("load({0}); ", Util.EscapeString(tempFilename));
             if (evaluationConfig != null && evaluationConfig.AdditionalFilesToLoad != null) {
                 foreach (var file in evaluationConfig.AdditionalFilesToLoad) {
                     StartupPrologue += String.Format("load({0});", Util.EscapeString(file));
@@ -569,7 +569,7 @@ namespace JSIL.Tests {
             }
             StartupPrologue += String.Format("function runMain () {{ " +
                 "print({0}); try {{ var elapsedTime = runTestCase(Date.now); }} catch (exc) {{ reportException(exc); }} print({1}); print({2} + elapsedTime);" +
-                "}}; shellStartup();",
+                "}}; JSIL.Initialize(); runMain();",
                 Util.EscapeString(sentinelStart),
                 Util.EscapeString(sentinelEnd),
                 Util.EscapeString(elapsedPrefix)
@@ -729,9 +729,9 @@ namespace JSIL.Tests {
 
             ThreadPool.QueueUserWorkItem(jsWorkItem);
 
-            if (!signals[0].Wait(5000))
+            if (!signals[0].Wait(60000))
                 throw new Exception("C# timed out");
-            if (!signals[1].Wait(5000))
+            if (!signals[1].Wait(60000))
                 throw new Exception("JS timed out");
 
             const int truncateThreshold = 4096;

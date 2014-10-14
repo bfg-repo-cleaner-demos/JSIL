@@ -89,7 +89,7 @@ function loadAssets (assets) {
   }
 };
 
-function shellStartup () {
+function shellStartup (executeMainEntryPoint) {
   initAssetLoaders();
 
   var seenFilenames = {};
@@ -121,11 +121,15 @@ function shellStartup () {
   }
 
   loadAssets(allAssetsToLoad);
+  
+  JSIL.Initialize();
+  JSIL.Host.runInitCallbacks();
+  JSIL.Host.runLaterFlush();
 
-  if (typeof (runMain) === "function") {
-    JSIL.Initialize();
-    JSIL.Host.runInitCallbacks();
-    JSIL.Host.runLaterFlush();
+  if (
+    (typeof (runMain) === "function") &&
+    (executeMainEntryPoint !== false)
+  ) {
     runMain();
   }
 };
